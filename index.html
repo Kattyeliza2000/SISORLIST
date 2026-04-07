@@ -149,6 +149,7 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalRename">
   <div class="modal" style="max-width:400px">
+    <button class="modal-close" onclick="closeRenameModal()" title="Cerrar">✕</button>
     <h2>✎ Cambiar nombre del listado</h2>
     <p style="font-size:12px;color:var(--text2);margin-bottom:1rem;line-height:1.5">
       Actualiza el semestre y paralelo al inicio de cada ciclo académico.
@@ -174,6 +175,7 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalEditStudent">
   <div class="modal" style="max-width:420px">
+    <button class="modal-close" onclick="closeEditStudent()" title="Cerrar">✕</button>
     <h2>✎ Editar datos del estudiante</h2>
     <input type="hidden" id="editIdx">
     <div class="form-group">
@@ -200,6 +202,7 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalAdd">
   <div class="modal" style="max-width:420px">
+    <button class="modal-close" onclick="closeAddStudent()" title="Cerrar">✕</button>
     <h2>+ Agregar estudiante</h2>
     <div class="form-group">
       <label>Apellidos y Nombres</label>
@@ -225,6 +228,7 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalImport">
   <div class="modal">
+    <button class="modal-close" onclick="closeImport()" title="Cerrar">✕</button>
     <h2>⬆ Importar desde TXT del SGA</h2>
     <div class="form-group">
       <label>Materia</label>
