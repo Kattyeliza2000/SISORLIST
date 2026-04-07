@@ -204,7 +204,7 @@ function loadUsers() {
     if (u) { users = JSON.parse(u); return; }
   } catch(e) {}
   // Crear admin por defecto
-  users = [{ email: 'admin@unemi.edu.ec', password: 'admin123', role: 'admin' }];
+  users = [{ email: 'ky211209@gmail.com', password: 'admin-dus-2109', role: 'admin' }];
   saveUsers();
 }
 function saveUsers() {
