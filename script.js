@@ -1,15 +1,23 @@
 // ═══════════════════════════════════════════════════
-//  CONFIGURACIÓN — edita aquí semestre y paralelo
+//  SISORLIST v2 — Script completo
+//  Nuevas funciones: Login, Panel Admin, Semáforo,
+//  Multi-paralelo, Historial de auditoría, Import XLSX,
+//  Backup JSON, Atajos de teclado, Mayúsculas forzadas
 // ═══════════════════════════════════════════════════
-const CONFIG_KEY    = 'listado_config_v1';
-const STORAGE_KEY   = 'octavo_c2_students_v2';
-const FIREBASE_URL  = 'https://firestore.googleapis.com/v1/projects/proyecto-eli-d6ce7/databases/(default)/documents/paralelos/octavo_c2';
+
+const FIREBASE_URL = 'https://firestore.googleapis.com/v1/projects/proyecto-eli-d6ce7/databases/(default)/documents/paralelos/octavo_c2';
+const LS_AUTH      = 'sisorlist_auth_v1';
+const LS_USERS     = 'sisorlist_users_v1';
+const LS_DATA      = 'sisorlist_data_v2';
+const LS_CONFIG    = 'sisorlist_config_v2';
+const LS_AUDIT     = 'sisorlist_audit_v1';
+const LS_PARALELOS = 'sisorlist_paralelos_v1';
+const LS_MATERIAS  = 'sisorlist_materias_v1';
 
 // ═══════════════════════════════════════════════════
-//  MATERIAS
+//  MATERIAS (configurables)
 // ═══════════════════════════════════════════════════
-const MATERIAS = ['ia','aud','deon','prac','emp','for','prog'];
-const MATERIA_NAMES = {
+const DEFAULT_MATERIAS_MAP = {
   ia:   'Inteligencia Artificial',
   aud:  'Auditoría de TI',
   deon: 'Deontología',
@@ -19,8 +27,16 @@ const MATERIA_NAMES = {
   prog: 'Programación Avanzada'
 };
 
+const CHIP_CLASSES = {
+  ia:'chip-ia', aud:'chip-aud', deon:'chip-deon', prac:'chip-prac',
+  emp:'chip-emp', for:'chip-for', prog:'chip-prog'
+};
+
+let MATERIAS_MAP = { ...DEFAULT_MATERIAS_MAP };
+let MATERIAS = Object.keys(MATERIAS_MAP);
+
 // ═══════════════════════════════════════════════════
-//  DATOS INICIALES (del Excel 2026-04-06)
+//  DATOS INICIALES
 // ═══════════════════════════════════════════════════
 const RAW_STUDENTS = [
   {"nombre":"AGUILAR AGUILAR ANDREA JULIANA","celular":"","correo":"aaguilara4@unemi.edu.ec"},
@@ -132,11 +148,17 @@ const RAW_STUDENTS = [
 // ═══════════════════════════════════════════════════
 //  ESTADO GLOBAL
 // ═══════════════════════════════════════════════════
-let students = [];
+let currentSession = null; // { email, role }
+let users = [];            // [{ email, password, role }]
+let paralelos = [];        // [{ id, nombre, semestre, active }]
+let activeParaleloId = 'c2';
+let studentsByParalelo = {}; // { paraleloId: [...] }
+let listadoConfig = { semestre: '8vo Semestre', paralelo: 'C2' };
 let currentFilter = 'todos';
 let currentMateriaFilter = 'todos';
+let selectedIds = new Set();
+let auditLog = [];
 let saveTimeout = null;
-let listadoConfig = { semestre: '8vo Semestre', paralelo: 'Paralelo C2' };
 
 // ═══════════════════════════════════════════════════
 //  UTILIDADES
@@ -144,60 +166,246 @@ let listadoConfig = { semestre: '8vo Semestre', paralelo: 'Paralelo C2' };
 function normalizeNombre(n) {
   return n.trim().toUpperCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/,' ');
+    .replace(/\s+/, ' ');
 }
-
 function emptyMaterias() {
-  return { ia:false, aud:false, deon:false, prac:false, emp:false, for:false, prog:false };
+  const m = {};
+  MATERIAS.forEach(k => m[k] = false);
+  return m;
 }
-
 function initStudents(raw) {
   return raw.map((s, i) => ({
-    id: i,
-    nombre: s.nombre,
+    id: 'std_' + i + '_' + Date.now(),
+    nombre: s.nombre.toUpperCase(),
     celular: s.celular || '',
     correo: s.correo || '',
     nuevo: false,
     materias: emptyMaterias()
   }));
 }
+function get students() { return studentsByParalelo[activeParaleloId] || []; }
+function setStudents(arr) { studentsByParalelo[activeParaleloId] = arr; }
+
+// Semáforo
+function semaforo(s) {
+  const total  = MATERIAS.length;
+  const con    = MATERIAS.filter(m => s.materias[m]).length;
+  if (con === total) return 'verde';
+  if (con === 0)     return 'rojo';
+  return 'amarillo';
+}
 
 // ═══════════════════════════════════════════════════
-//  PERSISTENCIA LOCAL
+//  AUTH
 // ═══════════════════════════════════════════════════
+function loadUsers() {
+  try {
+    const u = localStorage.getItem(LS_USERS);
+    if (u) { users = JSON.parse(u); return; }
+  } catch(e) {}
+  // Crear admin por defecto
+  users = [{ email: 'admin@unemi.edu.ec', password: 'admin123', role: 'admin' }];
+  saveUsers();
+}
+function saveUsers() {
+  localStorage.setItem(LS_USERS, JSON.stringify(users));
+}
+
+function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pass  = document.getElementById('loginPassword').value;
+  const err   = document.getElementById('loginError');
+
+  const user = users.find(u => u.email === email && u.password === pass);
+  if (!user) {
+    err.textContent = 'Correo o contraseña incorrectos.';
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+  currentSession = { email: user.email, role: user.role };
+  localStorage.setItem(LS_AUTH, JSON.stringify(currentSession));
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appMain').style.display = 'block';
+  document.getElementById('userBadgeEmail').textContent = user.email.split('@')[0];
+  auditEntry('🔑', `Inicio de sesión`, user.email);
+  renderAll();
+  loadFromFirebase();
+}
+
+function doLogout() {
+  localStorage.removeItem(LS_AUTH);
+  currentSession = null;
+  closePanel();
+  document.getElementById('appMain').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+function checkSession() {
+  try {
+    const s = localStorage.getItem(LS_AUTH);
+    if (s) {
+      const sess = JSON.parse(s);
+      const user = users.find(u => u.email === sess.email);
+      if (user) {
+        currentSession = sess;
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appMain').style.display = 'block';
+        document.getElementById('userBadgeEmail').textContent = sess.email.split('@')[0];
+        return true;
+      }
+    }
+  } catch(e) {}
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+//  PARALELOS
+// ═══════════════════════════════════════════════════
+function loadParalelos() {
+  try {
+    const p = localStorage.getItem(LS_PARALELOS);
+    if (p) { paralelos = JSON.parse(p); return; }
+  } catch(e) {}
+  paralelos = [{ id: 'c2', nombre: 'C2', semestre: '8vo Semestre', active: true }];
+  saveParalelos();
+}
+function saveParalelos() {
+  localStorage.setItem(LS_PARALELOS, JSON.stringify(paralelos));
+}
+function renderParaleloTabs() {
+  const cont = document.getElementById('paraleloTabs');
+  if (!cont) return;
+  if (paralelos.length <= 1) { cont.innerHTML = ''; return; }
+  cont.innerHTML = paralelos.map(p =>
+    `<button class="paralelo-tab-btn${p.id === activeParaleloId ? ' active' : ''}"
+      onclick="switchParalelo('${p.id}')">${p.nombre}</button>`
+  ).join('');
+}
+function switchParalelo(id) {
+  activeParaleloId = id;
+  const p = paralelos.find(x => x.id === id);
+  if (p) listadoConfig = { semestre: p.semestre, paralelo: p.nombre };
+  updateHeaderTitle();
+  renderParaleloTabs();
+  renderAll();
+}
+
+// ═══════════════════════════════════════════════════
+//  MATERIAS CONFIG
+// ═══════════════════════════════════════════════════
+function loadMateriasConfig() {
+  try {
+    const m = localStorage.getItem(LS_MATERIAS);
+    if (m) {
+      MATERIAS_MAP = JSON.parse(m);
+      MATERIAS = Object.keys(MATERIAS_MAP);
+      rebuildTableHeader();
+    }
+  } catch(e) {}
+}
+function saveMateriasConfig() {
+  localStorage.setItem(LS_MATERIAS, JSON.stringify(MATERIAS_MAP));
+}
+function rebuildTableHeader() {
+  // rebuild chip headers
+  const chipCols = document.querySelectorAll('th.col-materia .materia-abbrev');
+  // handled by dynamic rendering
+}
+
+// ═══════════════════════════════════════════════════
+//  PERSISTENCIA
+// ═══════════════════════════════════════════════════
+function loadData() {
+  try {
+    const saved = localStorage.getItem(LS_DATA);
+    if (saved) {
+      studentsByParalelo = JSON.parse(saved);
+      // fix materias keys for each paralelo
+      Object.keys(studentsByParalelo).forEach(pid => {
+        studentsByParalelo[pid].forEach(s => {
+          if (!s.materias) s.materias = emptyMaterias();
+          if (!s.correo) s.correo = '';
+          MATERIAS.forEach(m => { if (s.materias[m] === undefined) s.materias[m] = false; });
+        });
+      });
+    } else {
+      studentsByParalelo = { c2: initStudents(RAW_STUDENTS) };
+      saveData();
+    }
+  } catch(e) {
+    studentsByParalelo = { c2: initStudents(RAW_STUDENTS) };
+  }
+}
+
+function saveData(action) {
+  localStorage.setItem(LS_DATA, JSON.stringify(studentsByParalelo));
+  if (action) auditEntry('💾', action, currentSession ? currentSession.email : 'sistema');
+  syncFirebase();
+}
+
 function loadConfig() {
   try {
-    const c = localStorage.getItem(CONFIG_KEY);
+    const c = localStorage.getItem(LS_CONFIG);
     if (c) listadoConfig = JSON.parse(c);
   } catch(e) {}
   updateHeaderTitle();
 }
-
 function saveConfig() {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(listadoConfig));
+  localStorage.setItem(LS_CONFIG, JSON.stringify(listadoConfig));
 }
 
-function loadData() {
+// ═══════════════════════════════════════════════════
+//  AUDITORÍA
+// ═══════════════════════════════════════════════════
+function loadAuditLog() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      students = JSON.parse(saved);
-      students.forEach(s => {
-        if (!s.materias) s.materias = emptyMaterias();
-        if (s.correo === undefined) s.correo = '';
-      });
-    } else {
-      students = initStudents(RAW_STUDENTS);
-      saveData();
-    }
-  } catch(e) {
-    students = initStudents(RAW_STUDENTS);
-  }
+    const a = localStorage.getItem(LS_AUDIT);
+    if (a) auditLog = JSON.parse(a);
+  } catch(e) { auditLog = []; }
 }
-
-function saveData() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
-  syncFirebase();
+function saveAuditLog() {
+  localStorage.setItem(LS_AUDIT, JSON.stringify(auditLog.slice(0, 500)));
+}
+function auditEntry(icon, msg, user) {
+  const entry = {
+    ts: new Date().toISOString(),
+    icon, msg,
+    user: user || (currentSession ? currentSession.email : 'sistema'),
+    paralelo: activeParaleloId
+  };
+  auditLog.unshift(entry);
+  saveAuditLog();
+}
+function renderAudit() {
+  const cont = document.getElementById('auditContent');
+  if (!cont) return;
+  if (!auditLog.length) {
+    cont.innerHTML = '<div class="audit-container"><div class="audit-empty">Sin historial de cambios aún</div></div>';
+    return;
+  }
+  const rows = auditLog.map(e => {
+    const d = new Date(e.ts);
+    const dateStr = d.toLocaleDateString('es-EC') + ' ' + d.toLocaleTimeString('es-EC', { hour:'2-digit', minute:'2-digit' });
+    return `<div class="audit-entry">
+      <div class="audit-time">${dateStr}</div>
+      <div class="audit-icon">${e.icon}</div>
+      <div>
+        <div class="audit-msg">${e.msg}</div>
+        <div class="audit-user">${e.user} · Paralelo ${e.paralelo || ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+  cont.innerHTML = `<div class="audit-container">${rows}</div>`;
+}
+function clearAuditLog() {
+  if (!confirm('¿Limpiar todo el historial de auditoría?')) return;
+  auditLog = [];
+  saveAuditLog();
+  renderAudit();
+  showToast('Historial limpiado');
 }
 
 // ═══════════════════════════════════════════════════
@@ -212,16 +420,15 @@ async function syncFirebase() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fields: {
-            data:    { stringValue: JSON.stringify(students) },
+            data:    { stringValue: JSON.stringify(studentsByParalelo) },
             config:  { stringValue: JSON.stringify(listadoConfig) },
             updated: { stringValue: new Date().toISOString() }
           }
         })
       });
-    } catch(e) { /* offline ok */ }
+    } catch(e) {}
   }, 1500);
 }
-
 async function loadFromFirebase() {
   try {
     const res = await fetch(FIREBASE_URL);
@@ -229,12 +436,21 @@ async function loadFromFirebase() {
     const doc = await res.json();
     if (doc.fields && doc.fields.data) {
       const parsed = JSON.parse(doc.fields.data.stringValue);
-      students = parsed;
-      students.forEach(s => {
-        if (!s.materias) s.materias = emptyMaterias();
-        if (!s.correo) s.correo = '';
+      // merge: firebase wins for existing data
+      if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+        // v2 format: object keyed by paralelo
+        Object.assign(studentsByParalelo, parsed);
+      } else if (Array.isArray(parsed)) {
+        // v1 compat: array → put in c2
+        studentsByParalelo.c2 = parsed;
+      }
+      Object.keys(studentsByParalelo).forEach(pid => {
+        studentsByParalelo[pid].forEach(s => {
+          if (!s.materias) s.materias = emptyMaterias();
+          if (!s.correo) s.correo = '';
+        });
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+      localStorage.setItem(LS_DATA, JSON.stringify(studentsByParalelo));
       if (doc.fields.config) {
         listadoConfig = JSON.parse(doc.fields.config.stringValue);
         saveConfig();
@@ -243,65 +459,107 @@ async function loadFromFirebase() {
       renderAll();
       showToast('Datos sincronizados ☁');
     }
-  } catch(e) { /* usa local */ }
+  } catch(e) {}
 }
 
 // ═══════════════════════════════════════════════════
-//  RENDER
+//  RENDER PRINCIPAL
 // ═══════════════════════════════════════════════════
 function renderAll() {
   renderTable();
   renderStats();
   renderMateria();
   renderWhatsApp();
-  updateBulkButton();
+  renderAudit();
+  renderParaleloTabs();
+  rebuildImportMateriaSelect();
+}
+
+function rebuildImportMateriaSelect() {
+  const sel = document.getElementById('importMateria');
+  if (!sel) return;
+  sel.innerHTML = MATERIAS.map(k =>
+    `<option value="${k}">${MATERIAS_MAP[k]}</option>`
+  ).join('');
 }
 
 function renderStats() {
-  const total   = students.length;
-  const conTel  = students.filter(s => s.celular).length;
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const total   = sts.length;
+  const verde   = sts.filter(s => semaforo(s) === 'verde').length;
+  const amarillo= sts.filter(s => semaforo(s) === 'amarillo').length;
+  const rojo    = sts.filter(s => semaforo(s) === 'rojo').length;
+  const conTel  = sts.filter(s => s.celular).length;
   const sinTel  = total - conTel;
-  const conMail = students.filter(s => s.correo).length;
-  const nuevos  = students.filter(s => s.nuevo).length;
-  document.getElementById('statTotal').textContent   = total;
-  document.getElementById('statConTel').textContent  = conTel;
-  document.getElementById('statSinTel').textContent  = sinTel;
-  document.getElementById('statConMail').textContent = conMail;
-  document.getElementById('statNuevos').textContent  = nuevos;
+  const conMail = sts.filter(s => s.correo).length;
+  const nuevos  = sts.filter(s => s.nuevo).length;
+  document.getElementById('statTotal').textContent    = total;
+  document.getElementById('statVerde').textContent    = verde;
+  document.getElementById('statAmarillo').textContent = amarillo;
+  document.getElementById('statRojo').textContent     = rojo;
+  document.getElementById('statConTel').textContent   = conTel;
+  document.getElementById('statSinTel').textContent   = sinTel;
+  document.getElementById('statConMail').textContent  = conMail;
+  document.getElementById('statNuevos').textContent   = nuevos;
 }
 
 function getFiltered() {
-  const q = document.getElementById('searchInput').value.toLowerCase();
-  return students.filter(s => {
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const q   = (document.getElementById('searchInput') || {}).value || '';
+  const ql  = q.toLowerCase();
+  return sts.filter(s => {
     const matchQ = !q ||
-      s.nombre.toLowerCase().includes(q) ||
-      s.celular.includes(q) ||
-      s.correo.toLowerCase().includes(q);
-    const sinMaterias = MATERIAS.every(m => !s.materias[m]);
+      s.nombre.toLowerCase().includes(ql) ||
+      s.celular.includes(ql) ||
+      s.correo.toLowerCase().includes(ql);
+    const sem = semaforo(s);
     const matchF = currentFilter === 'todos' ||
-      (currentFilter === 'contel'      && s.celular) ||
-      (currentFilter === 'sintel'      && !s.celular) ||
-      (currentFilter === 'conmail'     && s.correo)   ||
-      (currentFilter === 'sinmail'     && !s.correo)  ||
-      (currentFilter === 'sinmaterias' && sinMaterias);
+      (currentFilter === 'verde'    && sem === 'verde')    ||
+      (currentFilter === 'amarillo' && sem === 'amarillo') ||
+      (currentFilter === 'rojo'     && sem === 'rojo')     ||
+      (currentFilter === 'contel'   && s.celular)          ||
+      (currentFilter === 'sintel'   && !s.celular)         ||
+      (currentFilter === 'conmail'  && s.correo)           ||
+      (currentFilter === 'sinmail'  && !s.correo);
     return matchQ && matchF;
   });
 }
 
 function renderTable() {
+  const sts = studentsByParalelo[activeParaleloId] || [];
   const filtered = getFiltered();
   const tbody = document.getElementById('tableBody');
   const empty = document.getElementById('emptyState');
+  if (!tbody) return;
 
   if (!filtered.length) {
     tbody.innerHTML = '';
     empty.style.display = 'block';
+    updateBulkButton();
     return;
   }
   empty.style.display = 'none';
 
+  // Rebuild header chips dynamically
+  const thead = document.querySelector('#mainTable thead tr');
+  if (thead) {
+    // remove old materia headers
+    const oldMats = thead.querySelectorAll('th.col-materia');
+    oldMats.forEach(el => el.remove());
+    const actTh = thead.querySelector('th.col-accion');
+    MATERIAS.forEach(m => {
+      const th = document.createElement('th');
+      th.className = 'col-materia';
+      const chipClass = CHIP_CLASSES[m] || 'chip-ia';
+      th.innerHTML = `<div class="materia-abbrev chip ${chipClass}">${m.toUpperCase()}</div>`;
+      thead.insertBefore(th, actTh);
+    });
+  }
+
   tbody.innerHTML = filtered.map((s, i) => {
-    const idx = students.indexOf(s);
+    const idx = sts.indexOf(s);
+    const sem = semaforo(s);
+    const semDot = `<span class="sem-dot sem-${sem}" title="${sem === 'verde' ? 'Completo' : sem === 'amarillo' ? 'Parcial' : 'Sin materias'}"></span>`;
 
     const telCell = s.celular
       ? `<span class="celular-edit" onclick="openEditStudent(${idx})">${s.celular}</span>`
@@ -316,50 +574,106 @@ function renderTable() {
         <div class="check-icon ${s.materias[m] ? 'checked' : ''}">${s.materias[m] ? '✓' : ''}</div>
       </td>`).join('');
 
-    return `<tr class="${s.nuevo ? 'highlight-new' : ''}">
+    const isSelected = selectedIds.has(s.id);
+
+    return `<tr class="${s.nuevo ? 'highlight-new' : ''}${isSelected ? ' selected-row' : ''}" id="row_${s.id}">
+      <td class="col-check">
+        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${s.id}', this.checked)">
+      </td>
+      <td class="col-sem">${semDot}</td>
       <td class="col-num">${i+1}</td>
       <td class="col-nombre">${s.nombre}${s.nuevo ? '<span class="badge-new">NUEVO</span>' : ''}</td>
       <td class="col-celular">${telCell}</td>
       <td class="col-correo">${mailCell}</td>
       ${checks}
       <td>
-        <button class="btn-icon" style="background:rgba(45,90,61,0.12);color:var(--accent-text);border-color:rgba(45,90,61,0.2);margin-right:3px" onclick="openEditStudent(${idx})" title="Editar">✎</button>
+        <button class="btn-icon" style="background:rgba(45,90,61,0.12);color:var(--accent-text);border-color:rgba(45,90,61,0.2);margin-right:3px" onclick="openEditStudent(${idx})" title="Editar (Doble clic)">✎</button>
         <button class="btn-danger" onclick="removeStudent(${idx})" title="Eliminar">✕</button>
       </td>
     </tr>`;
   }).join('');
+
+  updateBulkButton();
 }
 
 // ═══════════════════════════════════════════════════
-//  HEADER — cambio de nombre de listado
+//  SELECCIÓN MÚLTIPLE
+// ═══════════════════════════════════════════════════
+function toggleSelect(id, checked) {
+  if (checked) selectedIds.add(id); else selectedIds.delete(id);
+  updateBulkButton();
+  // update row class
+  const row = document.getElementById('row_' + id);
+  if (row) row.classList.toggle('selected-row', checked);
+}
+function toggleAll(cb) {
+  const filtered = getFiltered();
+  if (cb.checked) filtered.forEach(s => selectedIds.add(s.id));
+  else selectedIds.clear();
+  renderTable();
+}
+function updateBulkButton() {
+  const btn   = document.getElementById('btnBulkDelete');
+  const count = document.getElementById('bulkCount');
+  if (!btn) return;
+  if (selectedIds.size > 0) {
+    btn.style.display = 'inline-flex';
+    count.textContent = selectedIds.size;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+function bulkDeleteSelected() {
+  if (!selectedIds.size) return;
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const names = sts.filter(s => selectedIds.has(s.id)).slice(0,3).map(s => '• ' + s.nombre).join('\n');
+  const extra = selectedIds.size > 3 ? `\n  ...y ${selectedIds.size - 3} más` : '';
+  if (!confirm(`⚠ ¿Eliminar ${selectedIds.size} estudiante(s)?\n\n${names}${extra}\n\nEsta acción no se puede deshacer.`)) return;
+  studentsByParalelo[activeParaleloId] = sts.filter(s => !selectedIds.has(s.id));
+  const n = selectedIds.size;
+  selectedIds.clear();
+  saveData(`Eliminación masiva de ${n} estudiantes`);
+  renderAll();
+  showToast(`${n} estudiante(s) eliminados`);
+}
+
+// ═══════════════════════════════════════════════════
+//  HEADER / RENAME
 // ═══════════════════════════════════════════════════
 function updateHeaderTitle() {
-  document.getElementById('headerSemestre').textContent = listadoConfig.semestre;
-  document.getElementById('headerParalelo').textContent = `— ${listadoConfig.paralelo}`;
-  document.title = `${listadoConfig.semestre} ${listadoConfig.paralelo}`;
+  const sem = listadoConfig.semestre || '';
+  const par = listadoConfig.paralelo || '';
+  document.getElementById('headerSemestre').textContent = sem;
+  document.getElementById('headerParalelo').textContent = `— Paralelo ${par}`;
+  document.title = `${sem} ${par} · SISORLIST`;
 }
-
 function openRenameModal() {
   document.getElementById('inputSemestre').value = listadoConfig.semestre;
-  document.getElementById('inputParalelo').value = listadoConfig.paralelo;
+  const sel = document.getElementById('inputParaleloSelect');
+  sel.innerHTML = paralelos.map(p =>
+    `<option value="${p.id}" ${p.id === activeParaleloId ? 'selected' : ''}>${p.nombre} — ${p.semestre}</option>`
+  ).join('');
   document.getElementById('modalRename').classList.add('open');
 }
-
-function closeRenameModal() {
-  document.getElementById('modalRename').classList.remove('open');
-}
-
+function closeRenameModal() { document.getElementById('modalRename').classList.remove('open'); }
 function saveRename() {
   const sem = document.getElementById('inputSemestre').value.trim();
-  const par = document.getElementById('inputParalelo').value.trim();
-  if (!sem || !par) { showToast('Completa ambos campos'); return; }
-  listadoConfig.semestre = sem;
-  listadoConfig.paralelo = par;
-  saveConfig();
-  syncFirebase();
-  updateHeaderTitle();
-  closeRenameModal();
-  showToast('Nombre del listado actualizado');
+  const pid = document.getElementById('inputParaleloSelect').value;
+  if (!sem) { showToast('Ingresa el semestre'); return; }
+  const p = paralelos.find(x => x.id === pid);
+  if (p) {
+    p.semestre = sem;
+    activeParaleloId = pid;
+    listadoConfig = { semestre: sem, paralelo: p.nombre };
+    saveParalelos();
+    saveConfig();
+    syncFirebase();
+    updateHeaderTitle();
+    renderParaleloTabs();
+    auditEntry('✎', `Cambio de semestre a "${sem}" — Paralelo ${p.nombre}`);
+    closeRenameModal();
+    showToast('Semestre y paralelo actualizados');
+  }
 }
 
 // ═══════════════════════════════════════════════════
@@ -369,19 +683,18 @@ function setFilter(f, btn) {
   currentFilter = f;
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
+  selectedIds.clear();
   renderTable();
-  updateBulkButton();
 }
-
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('view-' + tab).classList.add('active');
-  if (tab === 'materias') renderMateria();
-  if (tab === 'whatsapp') renderWhatsApp();
+  if (tab === 'materias')  renderMateria();
+  if (tab === 'whatsapp')  renderWhatsApp();
+  if (tab === 'auditoria') renderAudit();
 }
-
 function setMateriaFilter(mat, btn) {
   currentMateriaFilter = mat;
   document.querySelectorAll('.mf-btn').forEach(b => b.classList.remove('active'));
@@ -393,36 +706,36 @@ function setMateriaFilter(mat, btn) {
 //  TOGGLE MATERIA
 // ═══════════════════════════════════════════════════
 function toggleMateria(idx, mat) {
-  students[idx].materias[mat] = !students[idx].materias[mat];
-  saveData();
+  const sts = studentsByParalelo[activeParaleloId];
+  const prev = sts[idx].materias[mat];
+  sts[idx].materias[mat] = !prev;
+  const action = `${prev ? 'Quitó' : 'Marcó'} ${MATERIAS_MAP[mat]} a ${sts[idx].nombre}`;
+  saveData(action);
   renderTable();
+  renderStats();
   renderMateria();
 }
 
 // ═══════════════════════════════════════════════════
-//  MODAL EDITAR ESTUDIANTE (nombre + celular + correo)
-// ═══════════════════════════════════════════════════
-//  VALIDACIONES
+//  VALIDACIONES (con forzado a mayúsculas)
 // ═══════════════════════════════════════════════════
 function validarCelular(cel) {
-  if (!cel) return true; // opcional
-  // Acepta: solo dígitos, 7–15 caracteres, puede empezar con 593 o 09
+  if (!cel) return true;
   return /^\d{7,15}$/.test(cel);
 }
-
 function validarCorreo(correo) {
-  if (!correo) return true; // opcional
+  if (!correo) return true;
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo);
 }
-
 function validarNombre(nombre) {
   if (!nombre || nombre.trim().length < 3) return false;
-  // Solo letras, espacios, tildes, guiones — sin números ni símbolos
-  return /^[A-ZÁÉÍÓÚÜÑ\s\-']+$/i.test(nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z\s\-']/g, ''));
+  // Solo letras mayúsculas, espacios, guiones, apóstrofes
+  const clean = nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return /^[A-Z\s\-']+$/.test(clean);
 }
-
 function mostrarError(inputId, mensaje) {
   const el = document.getElementById(inputId);
+  if (!el) return;
   el.style.borderColor = 'var(--red)';
   el.title = mensaje;
   el.classList.add('input-error');
@@ -433,40 +746,44 @@ function mostrarError(inputId, mensaje) {
   }, 2500);
 }
 
-  const s = students[idx];
-  document.getElementById('editIdx').value        = idx;
+// ═══════════════════════════════════════════════════
+//  MODAL EDITAR ESTUDIANTE
+// ═══════════════════════════════════════════════════
+function openEditStudent(idx) {
+  const sts = studentsByParalelo[activeParaleloId];
+  const s   = sts[idx];
+  document.getElementById('editIdx').value         = idx;
   document.getElementById('editNombreInput').value = s.nombre;
-  document.getElementById('editCelularInput').value = s.celular;
-  document.getElementById('editCorreoInput').value  = s.correo;
+  document.getElementById('editCelularInput').value= s.celular;
+  document.getElementById('editCorreoInput').value = s.correo;
   document.getElementById('modalEditStudent').classList.add('open');
+  setTimeout(() => document.getElementById('editNombreInput').focus(), 100);
 }
-
-function closeEditStudent() {
-  document.getElementById('modalEditStudent').classList.remove('open');
-}
-
+function closeEditStudent() { document.getElementById('modalEditStudent').classList.remove('open'); }
 function saveEditStudent() {
   const idx  = parseInt(document.getElementById('editIdx').value);
   const nom  = document.getElementById('editNombreInput').value.trim().toUpperCase();
   const cel  = document.getElementById('editCelularInput').value.trim().replace(/\s+/g,'');
   const mail = document.getElementById('editCorreoInput').value.trim().toLowerCase();
 
-  if (!nom || nom.length < 3) {
-    mostrarError('editNombreInput', 'El nombre es obligatorio y debe tener al menos 3 letras');
-    showToast('⚠ El nombre no puede estar vacío'); return;
+  if (!validarNombre(nom)) {
+    mostrarError('editNombreInput', 'Solo letras mayúsculas, mín. 3 caracteres');
+    showToast('⚠ Nombre inválido — solo letras mayúsculas'); return;
   }
   if (!validarCelular(cel)) {
-    mostrarError('editCelularInput', 'Solo dígitos, entre 7 y 15 caracteres (ej: 593967179277)');
+    mostrarError('editCelularInput', 'Solo dígitos, entre 7 y 15 caracteres');
     showToast('⚠ Número de celular inválido'); return;
   }
   if (!validarCorreo(mail)) {
-    mostrarError('editCorreoInput', 'Formato de correo inválido (ej: usuario@unemi.edu.ec)');
+    mostrarError('editCorreoInput', 'Formato de correo inválido');
     showToast('⚠ Correo institucional inválido'); return;
   }
-
-  students[idx].nombre  = nom;
-  students[idx].celular = cel;
-  students[idx].correo  = mail;
+  const sts = studentsByParalelo[activeParaleloId];
+  const old = { ...sts[idx] };
+  sts[idx].nombre  = nom;
+  sts[idx].celular = cel;
+  sts[idx].correo  = mail;
+  auditEntry('✎', `Editó estudiante: ${old.nombre} → ${nom}`, currentSession ? currentSession.email : '');
   saveData();
   renderAll();
   closeEditStudent();
@@ -481,89 +798,52 @@ function openAddStudent() {
   document.getElementById('addCelular').value = '';
   document.getElementById('addCorreo').value  = '';
   document.getElementById('modalAdd').classList.add('open');
+  setTimeout(() => document.getElementById('addNombre').focus(), 100);
 }
-
-function closeAddStudent() {
-  document.getElementById('modalAdd').classList.remove('open');
-}
-
+function closeAddStudent() { document.getElementById('modalAdd').classList.remove('open'); }
 function addStudent() {
   const nombre  = document.getElementById('addNombre').value.trim().toUpperCase();
   const celular = document.getElementById('addCelular').value.trim().replace(/\s+/g,'');
   const correo  = document.getElementById('addCorreo').value.trim().toLowerCase();
 
-  if (!nombre || nombre.length < 3) {
-    mostrarError('addNombre', 'El nombre es obligatorio');
-    showToast('⚠ Ingresa el nombre del estudiante'); return;
+  if (!validarNombre(nombre)) {
+    mostrarError('addNombre', 'Solo letras mayúsculas, mín. 3 caracteres');
+    showToast('⚠ Nombre inválido — solo letras mayúsculas'); return;
   }
   if (!validarCelular(celular)) {
-    mostrarError('addCelular', 'Solo dígitos, entre 7 y 15 caracteres (ej: 593967179277)');
+    mostrarError('addCelular', 'Solo dígitos, entre 7 y 15 caracteres');
     showToast('⚠ Número de celular inválido'); return;
   }
   if (!validarCorreo(correo)) {
-    mostrarError('addCorreo', 'Formato de correo inválido (ej: usuario@unemi.edu.ec)');
+    mostrarError('addCorreo', 'Formato de correo inválido');
     showToast('⚠ Correo institucional inválido'); return;
   }
-
-  const exists = students.find(s => normalizeNombre(s.nombre) === normalizeNombre(nombre));
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const exists = sts.find(s => normalizeNombre(s.nombre) === normalizeNombre(nombre));
   if (exists) { showToast('⚠ Este estudiante ya existe en el listado'); return; }
 
-  students.push({
-    id: Date.now(),
-    nombre,
-    celular,
-    correo,
-    nuevo: true,
-    materias: emptyMaterias()
-  });
-
+  sts.push({ id: 'std_' + Date.now(), nombre, celular, correo, nuevo: true, materias: emptyMaterias() });
+  studentsByParalelo[activeParaleloId] = sts;
+  auditEntry('➕', `Agregó estudiante: ${nombre}`, currentSession ? currentSession.email : '');
   saveData();
   renderAll();
   closeAddStudent();
-  showToast(`✓ ${nombre} agregado al listado`);
+  showToast(`✓ ${nombre} agregado`);
 }
 
 // ═══════════════════════════════════════════════════
 //  ELIMINAR ESTUDIANTE
 // ═══════════════════════════════════════════════════
 function removeStudent(idx) {
-  const s = students[idx];
-  if (!confirm(`¿Eliminar a ${s.nombre} del listado?\nEsta acción no se puede deshacer.`)) return;
-  students.splice(idx, 1);
+  const sts = studentsByParalelo[activeParaleloId];
+  const s   = sts[idx];
+  if (!confirm(`¿Eliminar a ${s.nombre} del listado?`)) return;
+  auditEntry('🗑', `Eliminó estudiante: ${s.nombre}`, currentSession ? currentSession.email : '');
+  sts.splice(idx, 1);
+  selectedIds.delete(s.id);
   saveData();
   renderAll();
-  updateBulkButton();
   showToast('Estudiante eliminado');
-}
-
-function updateBulkButton() {
-  const btn = document.getElementById('btnBulkDelete');
-  const count = document.getElementById('bulkCount');
-  if (!btn) return;
-  const filtered = getFiltered();
-  if (currentFilter === 'sinmaterias' && filtered.length > 0) {
-    btn.style.display = 'inline-flex';
-    count.textContent = filtered.length;
-  } else {
-    btn.style.display = 'none';
-  }
-}
-
-function bulkDelete() {
-  const filtered = getFiltered();
-  if (!filtered.length) return;
-  const nombres = filtered.slice(0, 5).map(s => '• ' + s.nombre).join('\n');
-  const extra = filtered.length > 5 ? `\n  ...y ${filtered.length - 5} más` : '';
-  if (!confirm(`⚠ ¿Eliminar ${filtered.length} estudiante(s) sin ninguna materia registrada?\n\n${nombres}${extra}\n\nEsta acción NO se puede deshacer.`)) return;
-  const idsToDelete = new Set(filtered.map(s => s.id));
-  students = students.filter(s => !idsToDelete.has(s.id));
-  saveData();
-  currentFilter = 'todos';
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('.filter-btn').classList.add('active');
-  renderAll();
-  updateBulkButton();
-  showToast(`${idsToDelete.size} estudiante(s) eliminados del listado`);
 }
 
 // ═══════════════════════════════════════════════════
@@ -571,15 +851,18 @@ function bulkDelete() {
 // ═══════════════════════════════════════════════════
 function renderMateria() {
   const cont = document.getElementById('materiaContent');
+  const sts  = studentsByParalelo[activeParaleloId] || [];
   const mat  = currentMateriaFilter;
+  if (!cont) return;
 
   if (mat === 'todos') {
     cont.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:1rem">` +
       MATERIAS.map(m => {
-        const list = students.filter(s => s.materias[m]);
+        const list = sts.filter(s => s.materias[m]);
+        const chipClass = CHIP_CLASSES[m] || 'chip-ia';
         return `<div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:1.25rem">
           <div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:4px;font-family:'IBM Plex Mono',monospace">${m.toUpperCase()}</div>
-          <div style="font-size:13px;font-weight:500;margin-bottom:0.6rem;color:var(--text)">${MATERIA_NAMES[m]}</div>
+          <div style="font-size:13px;font-weight:500;margin-bottom:0.6rem;color:var(--text)">${MATERIAS_MAP[m]}</div>
           <div style="font-size:11.5px;font-family:'IBM Plex Mono',monospace;color:var(--accent);font-weight:500;margin-bottom:0.5rem">${list.length} estudiantes</div>
           <div style="font-size:11px;line-height:2;color:var(--text)">
             ${list.length ? list.map(s => `• ${s.nombre}`).join('<br>') : '<span style="color:var(--text3);font-size:11px">Ninguno registrado aún</span>'}
@@ -587,12 +870,12 @@ function renderMateria() {
         </div>`;
       }).join('') + `</div>`;
   } else {
-    const list = students.filter(s => s.materias[mat]);
+    const list = sts.filter(s => s.materias[mat]);
     cont.innerHTML = `<div style="background:var(--surface);border-radius:10px;border:1px solid var(--border);padding:1.5rem">
       <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1rem">
         <div>
           <div style="font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);font-family:'IBM Plex Mono',monospace;margin-bottom:4px">${mat.toUpperCase()}</div>
-          <div style="font-size:1.05rem;font-weight:500">${MATERIA_NAMES[mat]}</div>
+          <div style="font-size:1.05rem;font-weight:500">${MATERIAS_MAP[mat] || mat}</div>
         </div>
         <div style="font-family:'IBM Plex Mono',monospace;font-size:1.5rem;font-weight:500;color:var(--accent)">${list.length}</div>
       </div>
@@ -622,32 +905,74 @@ function renderMateria() {
 //  VISTA WHATSAPP
 // ═══════════════════════════════════════════════════
 function renderWhatsApp() {
-  const conTel = students.filter(s => s.celular);
-  const sinTel = students.filter(s => !s.celular);
-
-  document.getElementById('waComList').innerHTML =
-    conTel.map((s,i) => `<div style="margin-bottom:4px">${i+1}. ${s.nombre}<br>
-      <span style="color:var(--text3);font-size:10px;margin-left:16px;font-family:'IBM Plex Mono',monospace">${s.celular}</span>
-    </div>`).join('');
-
-  document.getElementById('waSinList').innerHTML =
-    sinTel.map((s,i) => `<div style="margin-bottom:3px">${i+1}. ${s.nombre}</div>`).join('');
+  const sts   = studentsByParalelo[activeParaleloId] || [];
+  const conTel = sts.filter(s => s.celular);
+  const sinTel = sts.filter(s => !s.celular);
+  const waCom  = document.getElementById('waComList');
+  const waSin  = document.getElementById('waSinList');
+  if (!waCom || !waSin) return;
+  waCom.innerHTML = conTel.map((s,i) => `<div style="margin-bottom:4px">${i+1}. ${s.nombre}<br>
+    <span style="color:var(--text3);font-size:10px;margin-left:16px;font-family:'IBM Plex Mono',monospace">${s.celular}</span>
+  </div>`).join('');
+  waSin.innerHTML = sinTel.map((s,i) => `<div style="margin-bottom:3px">${i+1}. ${s.nombre}</div>`).join('');
 }
 
 // ═══════════════════════════════════════════════════
-//  IMPORT TXT
+//  IMPORT TXT / XLSX
 // ═══════════════════════════════════════════════════
-function openImport() { document.getElementById('modalImport').classList.add('open'); }
-
+function openImport() {
+  document.getElementById('modalImport').classList.add('open');
+  rebuildImportMateriaSelect();
+}
 function closeImport() {
   document.getElementById('modalImport').classList.remove('open');
   document.getElementById('importText').value = '';
-  document.getElementById('importResult').classList.remove('show');
+  const res = document.getElementById('importResult');
+  res.textContent = ''; res.classList.remove('show');
+  document.getElementById('importFileTxt').value = '';
+  document.getElementById('importFileXlsx').value = '';
 }
 
-// Convierte formato SGA "NOMBRES APELLIDOS" → "APELLIDOS NOMBRES"
-// El SGA da 2 nombres + 2 apellidos: las últimas 2 palabras son los apellidos.
-// Ej: "NICOLAS ARNALDO AGUILAR BAJAÑA" → "AGUILAR BAJAÑA NICOLAS ARNALDO"
+function loadImportFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  if (type === 'xlsx') {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb  = XLSX.read(e.target.result, { type: 'binary' });
+        const ws  = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        // Extraer nombres de la primera o segunda columna (SGA)
+        const lines = [];
+        rows.forEach(row => {
+          // buscar columna con nombres (largo, letras)
+          for (let i = 0; i < row.length; i++) {
+            const cell = String(row[i] || '').trim();
+            if (cell.length > 4 && /^[A-Za-záéíóúüñÁÉÍÓÚÜÑ\s]+$/.test(cell)) {
+              lines.push(cell);
+              break;
+            }
+          }
+        });
+        document.getElementById('importText').value = lines.join('\n');
+        showToast(`Excel cargado — ${lines.length} líneas detectadas`);
+      } catch(err) {
+        showToast('Error al leer el Excel. Verifica el formato.');
+      }
+    };
+    reader.readAsBinaryString(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('importText').value = e.target.result;
+      showToast(`"${file.name}" cargado`);
+    };
+    reader.onerror = () => showToast('Error al leer el archivo');
+    reader.readAsText(file, 'UTF-8');
+  }
+}
+
 function sgaNombreToApellidosNombre(fullName) {
   const parts = fullName.trim().toUpperCase().split(/\s+/);
   if (parts.length < 3) return parts.join(' ');
@@ -655,75 +980,64 @@ function sgaNombreToApellidosNombre(fullName) {
   const nombres   = parts.slice(0, -2);
   return [...apellidos, ...nombres].join(' ');
 }
-
-// Detecta si una línea viene del SGA: empieza con cédula/número separado por tab o espacios
-// Formato: "0956402895\tNICOLAS ARNALDO AGUILAR BAJAÑA"
 function parseSgaLine(line) {
   const tabParts = line.split('\t').map(p => p.trim()).filter(p => p.length > 0);
-  if (tabParts.length >= 2 && /^\d{8,13}$/.test(tabParts[0])) {
+  if (tabParts.length >= 2 && /^\d{8,13}$/.test(tabParts[0]))
     return { cedula: tabParts[0], rawNombre: tabParts.slice(1).join(' ') };
-  }
   const spaceParts = line.trim().split(/\s+/);
-  if (spaceParts.length >= 3 && /^\d{8,13}$/.test(spaceParts[0])) {
+  if (spaceParts.length >= 3 && /^\d{8,13}$/.test(spaceParts[0]))
     return { cedula: spaceParts[0], rawNombre: spaceParts.slice(1).join(' ') };
-  }
   return null;
 }
 
 function processImport() {
   const mat  = document.getElementById('importMateria').value;
   const text = document.getElementById('importText').value;
-  if (!text.trim()) { showToast('Pega el contenido del TXT primero'); return; }
+  if (!text.trim()) { showToast('Pega o carga el contenido del TXT primero'); return; }
 
+  const sts   = studentsByParalelo[activeParaleloId] || [];
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
   let matched = 0, newAdded = 0, alreadyHad = 0, sgaDetected = 0;
 
   lines.forEach(line => {
     const sgaParsed = parseSgaLine(line);
     let nombreFinal;
-
     if (sgaParsed) {
       sgaDetected++;
-      nombreFinal = sgaNombreToApellidosNombre(sgaParsed.rawNombre);
+      nombreFinal = sgaNombreToApellidosNombre(sgaParsed.rawNombre).toUpperCase();
     } else {
       nombreFinal = line.trim().toUpperCase();
     }
-
     const normalized = normalizeNombre(nombreFinal);
-
-    const found = students.find(s =>
+    const found = sts.find(s =>
       normalizeNombre(s.nombre) === normalized ||
       normalizeNombre(s.nombre).includes(normalized.slice(0,10)) ||
       normalized.includes(normalizeNombre(s.nombre).slice(0,10))
     );
-
     if (found) {
       if (!found.materias[mat]) { found.materias[mat] = true; matched++; }
       else alreadyHad++;
     } else {
-      students.push({
-        id: Date.now() + Math.random(),
+      sts.push({
+        id: 'std_' + Date.now() + '_' + Math.random(),
         nombre: nombreFinal,
         celular: sgaParsed ? sgaParsed.cedula : '',
-        correo: '',
-        nuevo: true,
+        correo: '', nuevo: true,
         materias: { ...emptyMaterias(), [mat]: true }
       });
       newAdded++;
     }
   });
 
+  studentsByParalelo[activeParaleloId] = sts;
+  auditEntry('⬆', `Importación: ${matched} marcados, ${newAdded} nuevos — ${MATERIAS_MAP[mat]}`, currentSession ? currentSession.email : '');
   saveData();
   renderAll();
 
-  const sgaNote = sgaDetected > 0
-    ? `• Formato SGA detectado (${sgaDetected} líneas reordenadas)\n`
-    : '';
-
   const res = document.getElementById('importResult');
   res.textContent =
-    `✓ Proceso completado — ${MATERIA_NAMES[mat]}\n\n` +
-    sgaNote +
+    `✓ Proceso completado — ${MATERIAS_MAP[mat]}\n\n` +
+    (sgaDetected > 0 ? `• Formato SGA detectado (${sgaDetected} líneas reordenadas)\n` : '') +
     `• ${matched} marcados en esta materia\n` +
     `• ${newAdded} nuevos agregados\n` +
     `• ${alreadyHad} ya estaban registrados\n` +
@@ -733,113 +1047,319 @@ function processImport() {
 }
 
 // ═══════════════════════════════════════════════════
-//  EXPORTAR CSV (con correo)
+//  EXPORTAR
 // ═══════════════════════════════════════════════════
 function exportCSV() {
-  const header = ['#','Nombre','Celular','Correo','IA','Auditoría TI','Deontología','Prácticas Lab.','Emprendimiento','Cómputo Forense','Prog. Avanzada'];
-  const rows = students.map((s, i) => [
-    i+1, s.nombre, s.celular, s.correo,
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const header = ['#','Nombre','Celular','Correo','Semáforo',...MATERIAS.map(m => MATERIAS_MAP[m])];
+  const rows = sts.map((s, i) => [
+    i+1, s.nombre, s.celular, s.correo, semaforo(s),
     ...MATERIAS.map(m => s.materias[m] ? 'X' : '')
   ]);
   const csv = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8;' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
-  const sem  = listadoConfig.semestre.replace(/\s+/g,'_');
-  const par  = listadoConfig.paralelo.replace(/\s+/g,'_');
-  a.href = url;
-  a.download = `listado_${sem}_${par}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('CSV exportado con correos');
+  a.href = url; a.download = `listado_${listadoConfig.semestre}_${listadoConfig.paralelo}.csv`.replace(/\s+/g,'_');
+  a.click(); URL.revokeObjectURL(url);
+  showToast('CSV exportado');
 }
 
 function exportExcel() {
-  if (typeof XLSX === 'undefined') {
-    showToast('Error: librería Excel no cargada. Verifica tu conexión a internet.');
-    return;
-  }
-
-  const sem = listadoConfig.semestre;
-  const par = listadoConfig.paralelo;
+  if (typeof XLSX === 'undefined') { showToast('Error: librería Excel no cargada'); return; }
+  const sts = studentsByParalelo[activeParaleloId] || [];
   const wb  = XLSX.utils.book_new();
-
-  // ── Hoja 1: Listado completo ──────────────────────
-  const headerRow = ['#','Apellidos y Nombres','Celular','Correo Institucional',
-    'IA','Auditoría TI','Deontología','Prácticas Lab.','Emprendimiento','Cómputo Forense','Prog. Avanzada'];
-
-  const dataRows = students.map((s, i) => [
-    i + 1,
-    s.nombre,
-    s.celular || '',
-    s.correo  || '',
+  const headerRow = ['#','Apellidos y Nombres','Celular','Correo Institucional','Semáforo',
+    ...MATERIAS.map(m => MATERIAS_MAP[m])];
+  const dataRows = sts.map((s, i) => [
+    i+1, s.nombre, s.celular||'', s.correo||'', semaforo(s),
     ...MATERIAS.map(m => s.materias[m] ? '✓' : '')
   ]);
-
-  const wsData = [headerRow, ...dataRows];
-  const ws1 = XLSX.utils.aoa_to_sheet(wsData);
-
-  // Ancho de columnas
-  ws1['!cols'] = [
-    { wch: 4 },   // #
-    { wch: 40 },  // Nombre
-    { wch: 16 },  // Celular
-    { wch: 32 },  // Correo
-    { wch: 6 }, { wch: 13 }, { wch: 13 },
-    { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }
-  ];
-
+  const ws1 = XLSX.utils.aoa_to_sheet([headerRow, ...dataRows]);
+  ws1['!cols'] = [{ wch:4 },{ wch:40 },{ wch:16 },{ wch:32 },{ wch:10 },...MATERIAS.map(() => ({ wch:16 }))];
   XLSX.utils.book_append_sheet(wb, ws1, 'Listado');
 
-  // ── Hoja 2: Resumen por materia ───────────────────
-  const resumenRows = [['Materia', 'Registrados', 'Sin registrar', 'Total']];
+  // Resumen por materia
+  const resHead = [['Materia','Registrados','Sin registrar','Total']];
   MATERIAS.forEach(m => {
-    const con = students.filter(s => s.materias[m]).length;
-    const sin = students.length - con;
-    resumenRows.push([MATERIA_NAMES[m], con, sin, students.length]);
+    const con = sts.filter(s => s.materias[m]).length;
+    resHead.push([MATERIAS_MAP[m], con, sts.length - con, sts.length]);
   });
-  const ws2 = XLSX.utils.aoa_to_sheet(resumenRows);
-  ws2['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
+  const ws2 = XLSX.utils.aoa_to_sheet(resHead);
+  ws2['!cols'] = [{ wch:28 },{ wch:14 },{ wch:14 },{ wch:10 }];
   XLSX.utils.book_append_sheet(wb, ws2, 'Resumen por Materia');
 
-  // ── Hoja 3: Sin ninguna materia ───────────────────
-  const sinMaterias = students.filter(s => MATERIAS.every(m => !s.materias[m]));
-  const ws3Data = [
-    ['# ', 'Apellidos y Nombres', 'Celular', 'Correo'],
-    ...sinMaterias.map((s, i) => [i + 1, s.nombre, s.celular || '', s.correo || ''])
-  ];
-  const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
-  ws3['!cols'] = [{ wch: 4 }, { wch: 40 }, { wch: 16 }, { wch: 32 }];
+  // Sin ninguna materia
+  const sinMat = sts.filter(s => MATERIAS.every(m => !s.materias[m]));
+  const ws3 = XLSX.utils.aoa_to_sheet([['#','Apellidos y Nombres','Celular','Correo'],
+    ...sinMat.map((s,i) => [i+1, s.nombre, s.celular||'', s.correo||''])]);
+  ws3['!cols'] = [{ wch:4 },{ wch:40 },{ wch:16 },{ wch:32 }];
   XLSX.utils.book_append_sheet(wb, ws3, 'Sin Materias');
 
-  // ── Descargar ─────────────────────────────────────
-  const filename = `listado_${sem}_${par}.xlsx`.replace(/\s+/g, '_');
-  XLSX.writeFile(wb, filename);
-  showToast(`Excel exportado: ${students.length} estudiantes en 3 hojas`);
+  XLSX.writeFile(wb, `listado_${listadoConfig.semestre}_${listadoConfig.paralelo}.xlsx`.replace(/\s+/g,'_'));
+  showToast(`Excel exportado: ${sts.length} estudiantes`);
 }
 
+function downloadBackup() {
+  const backup = {
+    exportedAt: new Date().toISOString(),
+    exportedBy: currentSession ? currentSession.email : 'sistema',
+    version: 'sisorlist-v2',
+    config: listadoConfig,
+    paralelos,
+    studentsByParalelo,
+    auditLog: auditLog.slice(0, 100)
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `sisorlist_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+  auditEntry('💾', 'Backup JSON descargado', currentSession ? currentSession.email : '');
+  showToast('Backup descargado ✓');
+}
 
 // ═══════════════════════════════════════════════════
-//  COPIAR NÚMEROS
+//  COPIAR
 // ═══════════════════════════════════════════════════
 function copyNumbers() {
-  const nums = students.filter(s => s.celular).map(s => s.celular).join('\n');
-  navigator.clipboard.writeText(nums).then(() => showToast('Números copiados al portapapeles'));
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const nums = sts.filter(s => s.celular).map(s => s.celular).join('\n');
+  navigator.clipboard.writeText(nums).then(() => showToast('Números copiados'));
 }
-
 function copyNumbersWA() {
-  const nums = students.filter(s => s.celular)
-    .map(s => `+${s.celular} ${s.nombre}`).join('\n');
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const nums = sts.filter(s => s.celular).map(s => `+${s.celular} ${s.nombre}`).join('\n');
   navigator.clipboard.writeText(nums).then(() => showToast('Lista copiada con formato WhatsApp'));
 }
+function copyEmails() {
+  const sts = studentsByParalelo[activeParaleloId] || [];
+  const mails = sts.filter(s => s.correo).map(s => s.correo).join(';');
+  navigator.clipboard.writeText(mails).then(() => showToast(`${sts.filter(s=>s.correo).length} correos copiados`));
+}
 
 // ═══════════════════════════════════════════════════
-//  COPIAR CORREOS
+//  PANEL DE CONTROL
 // ═══════════════════════════════════════════════════
-function copyEmails() {
-  const mails = students.filter(s => s.correo).map(s => s.correo).join(';');
-  navigator.clipboard.writeText(mails).then(() => showToast(`${students.filter(s=>s.correo).length} correos copiados (separados por ;)`));
+function openPanel() {
+  // Cargar datos en el panel
+  document.getElementById('cfgEmail').value    = currentSession ? currentSession.email : '';
+  document.getElementById('cfgPassword').value = '';
+  document.getElementById('cfgPassword2').value= '';
+  renderUsuariosLista();
+  renderParalelosLista();
+  renderMateriasConfigLista();
+  document.getElementById('modalPanel').classList.add('open');
 }
+function closePanel() { document.getElementById('modalPanel').classList.remove('open'); }
+
+function switchPanelTab(id, btn) {
+  document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel-section').forEach(s => s.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('psec-' + id).classList.add('active');
+}
+
+// --- Cuenta ---
+function saveCuenta() {
+  const email = document.getElementById('cfgEmail').value.trim().toLowerCase();
+  const pass  = document.getElementById('cfgPassword').value;
+  const pass2 = document.getElementById('cfgPassword2').value;
+  if (!email) { showToast('Ingresa el correo'); return; }
+  if (pass && pass !== pass2) { showToast('Las contraseñas no coinciden'); return; }
+  const oldEmail = currentSession.email;
+  const user = users.find(u => u.email === oldEmail);
+  if (user) {
+    user.email = email;
+    if (pass) user.password = pass;
+    saveUsers();
+    currentSession.email = email;
+    localStorage.setItem(LS_AUTH, JSON.stringify(currentSession));
+    document.getElementById('userBadgeEmail').textContent = email.split('@')[0];
+    auditEntry('🔧', `Cuenta actualizada: ${oldEmail} → ${email}`);
+    showToast('Cuenta actualizada');
+    closePanel();
+  }
+}
+
+// --- Usuarios ---
+function renderUsuariosLista() {
+  const cont = document.getElementById('usuariosLista');
+  if (!cont) return;
+  const ROLE_LABEL = { admin: 'Admin', editor: 'Editor', viewer: 'Visualizador' };
+  cont.innerHTML = users.map((u, i) => `
+    <div class="user-row">
+      <div>
+        <div class="user-row-email">${u.email}</div>
+        <div style="margin-top:3px"><span class="user-role-badge role-${u.role}">${ROLE_LABEL[u.role] || u.role}</span></div>
+      </div>
+      ${users.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeUser(${i})">✕</button>` : ''}
+    </div>`).join('');
+}
+function addUser() {
+  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const role  = document.getElementById('newUserRole').value;
+  if (!email) { showToast('Ingresa el correo'); return; }
+  if (users.find(u => u.email === email)) { showToast('Este usuario ya existe'); return; }
+  users.push({ email, password: 'unemi2025', role });
+  saveUsers();
+  auditEntry('👤', `Usuario agregado: ${email} (${role})`);
+  renderUsuariosLista();
+  document.getElementById('newUserEmail').value = '';
+  showToast(`Usuario agregado — contraseña inicial: unemi2025`);
+}
+function removeUser(i) {
+  if (users[i].email === currentSession.email) { showToast('No puedes eliminar tu propio usuario'); return; }
+  if (!confirm(`¿Eliminar acceso de ${users[i].email}?`)) return;
+  auditEntry('👤', `Usuario eliminado: ${users[i].email}`);
+  users.splice(i, 1);
+  saveUsers();
+  renderUsuariosLista();
+  showToast('Usuario eliminado');
+}
+
+// --- Paralelos ---
+function renderParalelosLista() {
+  const cont = document.getElementById('paralelosLista');
+  if (!cont) return;
+  cont.innerHTML = paralelos.map((p, i) => `
+    <div class="paralelo-row">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500">Paralelo ${p.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${p.semestre}</div>
+      </div>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        ${p.id === activeParaleloId ? '<span class="paralelo-active-badge">ACTIVO</span>' : `<button class="btn-secondary" style="font-size:11px" onclick="switchParaleloPanel('${p.id}')">Activar</button>`}
+        ${paralelos.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeParalelo(${i})">✕</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+function switchParaleloPanel(id) {
+  activeParaleloId = id;
+  const p = paralelos.find(x => x.id === id);
+  if (p) listadoConfig = { semestre: p.semestre, paralelo: p.nombre };
+  updateHeaderTitle();
+  renderParalelosLista();
+  renderParaleloTabs();
+  renderAll();
+  showToast(`Paralelo ${p ? p.nombre : id} activo`);
+}
+function addParalelo() {
+  const nombre = document.getElementById('newParaleloNombre').value.trim().toUpperCase();
+  const sem    = document.getElementById('newParaleloSemestre').value.trim();
+  if (!nombre || !sem) { showToast('Completa nombre y semestre'); return; }
+  const id = 'p_' + nombre.toLowerCase() + '_' + Date.now();
+  paralelos.push({ id, nombre, semestre: sem, active: false });
+  if (!studentsByParalelo[id]) studentsByParalelo[id] = [];
+  saveParalelos();
+  saveData(`Paralelo ${nombre} creado`);
+  renderParalelosLista();
+  renderParaleloTabs();
+  document.getElementById('newParaleloNombre').value = '';
+  document.getElementById('newParaleloSemestre').value = '';
+  auditEntry('📂', `Paralelo creado: ${nombre} — ${sem}`);
+  showToast(`Paralelo ${nombre} creado`);
+}
+function removeParalelo(i) {
+  if (paralelos[i].id === activeParaleloId) { showToast('No puedes eliminar el paralelo activo'); return; }
+  if (!confirm(`¿Eliminar paralelo ${paralelos[i].nombre}? Se borrarán sus estudiantes.`)) return;
+  auditEntry('🗑', `Paralelo eliminado: ${paralelos[i].nombre}`);
+  delete studentsByParalelo[paralelos[i].id];
+  paralelos.splice(i, 1);
+  saveParalelos();
+  saveData();
+  renderParalelosLista();
+  renderParaleloTabs();
+  showToast('Paralelo eliminado');
+}
+
+// --- Materias config ---
+function renderMateriasConfigLista() {
+  const cont = document.getElementById('materiasConfigLista');
+  if (!cont) return;
+  cont.innerHTML = MATERIAS.map((k, i) => `
+    <div class="paralelo-row">
+      <div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:500">${k.toUpperCase()}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">${MATERIAS_MAP[k]}</div>
+      </div>
+      ${MATERIAS.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeMateria('${k}')">✕</button>` : ''}
+    </div>`).join('');
+}
+function addMateria() {
+  const key  = document.getElementById('newMateriaKey').value.trim().toLowerCase().replace(/\s+/g,'');
+  const name = document.getElementById('newMateriaName').value.trim();
+  if (!key || !name) { showToast('Completa clave y nombre'); return; }
+  if (MATERIAS_MAP[key]) { showToast('Esta clave ya existe'); return; }
+  MATERIAS_MAP[key] = name;
+  MATERIAS = Object.keys(MATERIAS_MAP);
+  // Add key to all students
+  Object.values(studentsByParalelo).forEach(arr =>
+    arr.forEach(s => { if (s.materias[key] === undefined) s.materias[key] = false; })
+  );
+  saveMateriasConfig();
+  saveData(`Materia agregada: ${name}`);
+  auditEntry('📚', `Materia agregada: ${key} — ${name}`);
+  renderMateriasConfigLista();
+  rebuildImportMateriaSelect();
+  renderAll();
+  document.getElementById('newMateriaKey').value = '';
+  document.getElementById('newMateriaName').value = '';
+  showToast(`Materia ${name} agregada`);
+}
+function removeMateria(key) {
+  if (!confirm(`¿Eliminar la materia "${MATERIAS_MAP[key]}"? Se perderán todos los registros de esa materia.`)) return;
+  auditEntry('📚', `Materia eliminada: ${key} — ${MATERIAS_MAP[key]}`);
+  delete MATERIAS_MAP[key];
+  MATERIAS = Object.keys(MATERIAS_MAP);
+  Object.values(studentsByParalelo).forEach(arr =>
+    arr.forEach(s => { delete s.materias[key]; })
+  );
+  saveMateriasConfig();
+  saveData();
+  renderMateriasConfigLista();
+  rebuildImportMateriaSelect();
+  renderAll();
+  showToast('Materia eliminada');
+}
+
+// ═══════════════════════════════════════════════════
+//  ATAJOS DE TECLADO
+// ═══════════════════════════════════════════════════
+function handleSearchKey(e) {
+  if (e.key === 'Enter') { openAddStudent(); }
+}
+
+document.addEventListener('keydown', e => {
+  if (!currentSession) return; // solo si está logueado
+  // Escape cierra modales
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    return;
+  }
+  // Enter en modal editar
+  if (e.key === 'Enter') {
+    const editModal = document.getElementById('modalEditStudent');
+    if (editModal && editModal.classList.contains('open')) {
+      // no si el foco está en el textarea
+      if (document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault(); saveEditStudent(); return;
+      }
+    }
+    const addModal = document.getElementById('modalAdd');
+    if (addModal && addModal.classList.contains('open')) {
+      if (document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault(); addStudent(); return;
+      }
+    }
+  }
+  // Login: Enter
+  const loginSc = document.getElementById('loginScreen');
+  if (loginSc && loginSc.style.display !== 'none' && e.key === 'Enter') {
+    doLogin(); return;
+  }
+});
 
 // ═══════════════════════════════════════════════════
 //  TOAST
@@ -852,7 +1372,7 @@ function showToast(msg) {
 }
 
 // ═══════════════════════════════════════════════════
-//  CERRAR MODALES AL HACER CLIC EN EL OVERLAY
+//  CERRAR MODALES AL CLICK FUERA
 // ═══════════════════════════════════════════════════
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
@@ -861,7 +1381,19 @@ document.querySelectorAll('.modal-overlay').forEach(o => {
 // ═══════════════════════════════════════════════════
 //  INICIALIZACIÓN
 // ═══════════════════════════════════════════════════
-loadConfig();
-loadData();
-renderAll();
-loadFromFirebase();
+function init() {
+  loadUsers();
+  loadParalelos();
+  loadMateriasConfig();
+  loadData();
+  loadConfig();
+  loadAuditLog();
+  rebuildImportMateriaSelect();
+
+  if (checkSession()) {
+    renderAll();
+    loadFromFirebase();
+  }
+}
+
+init();
