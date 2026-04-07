@@ -254,6 +254,7 @@ function renderAll() {
   renderStats();
   renderMateria();
   renderWhatsApp();
+  updateBulkButton();
 }
 
 function renderStats() {
@@ -276,11 +277,13 @@ function getFiltered() {
       s.nombre.toLowerCase().includes(q) ||
       s.celular.includes(q) ||
       s.correo.toLowerCase().includes(q);
+    const sinMaterias = MATERIAS.every(m => !s.materias[m]);
     const matchF = currentFilter === 'todos' ||
-      (currentFilter === 'contel'  && s.celular) ||
-      (currentFilter === 'sintel'  && !s.celular) ||
-      (currentFilter === 'conmail' && s.correo)   ||
-      (currentFilter === 'sinmail' && !s.correo);
+      (currentFilter === 'contel'      && s.celular) ||
+      (currentFilter === 'sintel'      && !s.celular) ||
+      (currentFilter === 'conmail'     && s.correo)   ||
+      (currentFilter === 'sinmail'     && !s.correo)  ||
+      (currentFilter === 'sinmaterias' && sinMaterias);
     return matchQ && matchF;
   });
 }
@@ -367,6 +370,7 @@ function setFilter(f, btn) {
   document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   renderTable();
+  updateBulkButton();
 }
 
 function switchTab(tab, el) {
@@ -528,7 +532,38 @@ function removeStudent(idx) {
   students.splice(idx, 1);
   saveData();
   renderAll();
+  updateBulkButton();
   showToast('Estudiante eliminado');
+}
+
+function updateBulkButton() {
+  const btn = document.getElementById('btnBulkDelete');
+  const count = document.getElementById('bulkCount');
+  if (!btn) return;
+  const filtered = getFiltered();
+  if (currentFilter === 'sinmaterias' && filtered.length > 0) {
+    btn.style.display = 'inline-flex';
+    count.textContent = filtered.length;
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function bulkDelete() {
+  const filtered = getFiltered();
+  if (!filtered.length) return;
+  const nombres = filtered.slice(0, 5).map(s => '• ' + s.nombre).join('\n');
+  const extra = filtered.length > 5 ? `\n  ...y ${filtered.length - 5} más` : '';
+  if (!confirm(`⚠ ¿Eliminar ${filtered.length} estudiante(s) sin ninguna materia registrada?\n\n${nombres}${extra}\n\nEsta acción NO se puede deshacer.`)) return;
+  const idsToDelete = new Set(filtered.map(s => s.id));
+  students = students.filter(s => !idsToDelete.has(s.id));
+  saveData();
+  currentFilter = 'todos';
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.filter-btn').classList.add('active');
+  renderAll();
+  updateBulkButton();
+  showToast(`${idsToDelete.size} estudiante(s) eliminados del listado`);
 }
 
 // ═══════════════════════════════════════════════════
@@ -718,6 +753,71 @@ function exportCSV() {
   URL.revokeObjectURL(url);
   showToast('CSV exportado con correos');
 }
+
+function exportExcel() {
+  if (typeof XLSX === 'undefined') {
+    showToast('Error: librería Excel no cargada. Verifica tu conexión a internet.');
+    return;
+  }
+
+  const sem = listadoConfig.semestre;
+  const par = listadoConfig.paralelo;
+  const wb  = XLSX.utils.book_new();
+
+  // ── Hoja 1: Listado completo ──────────────────────
+  const headerRow = ['#','Apellidos y Nombres','Celular','Correo Institucional',
+    'IA','Auditoría TI','Deontología','Prácticas Lab.','Emprendimiento','Cómputo Forense','Prog. Avanzada'];
+
+  const dataRows = students.map((s, i) => [
+    i + 1,
+    s.nombre,
+    s.celular || '',
+    s.correo  || '',
+    ...MATERIAS.map(m => s.materias[m] ? '✓' : '')
+  ]);
+
+  const wsData = [headerRow, ...dataRows];
+  const ws1 = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Ancho de columnas
+  ws1['!cols'] = [
+    { wch: 4 },   // #
+    { wch: 40 },  // Nombre
+    { wch: 16 },  // Celular
+    { wch: 32 },  // Correo
+    { wch: 6 }, { wch: 13 }, { wch: 13 },
+    { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 16 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws1, 'Listado');
+
+  // ── Hoja 2: Resumen por materia ───────────────────
+  const resumenRows = [['Materia', 'Registrados', 'Sin registrar', 'Total']];
+  MATERIAS.forEach(m => {
+    const con = students.filter(s => s.materias[m]).length;
+    const sin = students.length - con;
+    resumenRows.push([MATERIA_NAMES[m], con, sin, students.length]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(resumenRows);
+  ws2['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumen por Materia');
+
+  // ── Hoja 3: Sin ninguna materia ───────────────────
+  const sinMaterias = students.filter(s => MATERIAS.every(m => !s.materias[m]));
+  const ws3Data = [
+    ['# ', 'Apellidos y Nombres', 'Celular', 'Correo'],
+    ...sinMaterias.map((s, i) => [i + 1, s.nombre, s.celular || '', s.correo || ''])
+  ];
+  const ws3 = XLSX.utils.aoa_to_sheet(ws3Data);
+  ws3['!cols'] = [{ wch: 4 }, { wch: 40 }, { wch: 16 }, { wch: 32 }];
+  XLSX.utils.book_append_sheet(wb, ws3, 'Sin Materias');
+
+  // ── Descargar ─────────────────────────────────────
+  const filename = `listado_${sem}_${par}.xlsx`.replace(/\s+/g, '_');
+  XLSX.writeFile(wb, filename);
+  showToast(`Excel exportado: ${students.length} estudiantes en 3 hojas`);
+}
+
 
 // ═══════════════════════════════════════════════════
 //  COPIAR NÚMEROS
