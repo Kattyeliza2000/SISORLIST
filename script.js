@@ -201,10 +201,18 @@ function semaforo(s) {
 function loadUsers() {
   try {
     const u = localStorage.getItem(LS_USERS);
-    if (u) { users = JSON.parse(u); return; }
+    if (u) { users = JSON.parse(u); }
   } catch(e) {}
-  // Crear admin por defecto
-  users = [{ email: 'ky211209@gmail.com', password: 'admin-dus2109', role: 'admin' }];
+  // Siempre asegurarse de que el admin principal existe con la contraseña correcta
+  const ADMIN_EMAIL = 'ky211209@gmail.com';
+  const ADMIN_PASS  = 'admin-dus2109';
+  const idx = users.findIndex(u => u.email === ADMIN_EMAIL);
+  if (idx === -1) {
+    users.push({ email: ADMIN_EMAIL, password: ADMIN_PASS, role: 'admin' });
+  } else {
+    users[idx].password = ADMIN_PASS;
+    users[idx].role = 'admin';
+  }
   saveUsers();
 }
 function saveUsers() {
