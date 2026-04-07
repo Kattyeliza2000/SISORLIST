@@ -36,7 +36,7 @@ let MATERIAS_MAP = { ...DEFAULT_MATERIAS_MAP };
 let MATERIAS = Object.keys(MATERIAS_MAP);
 
 // ═══════════════════════════════════════════════════
-//  DATOS INICIALES
+//  DATOS INICIALES (eliminados — Firebase es la fuente de verdad)
 // ═══════════════════════════════════════════════════
 const RAW_STUDENTS = [
   {"nombre":"AGUILAR AGUILAR ANDREA JULIANA","celular":"","correo":"aaguilara4@unemi.edu.ec"},
@@ -204,7 +204,7 @@ function loadUsers() {
     if (u) { users = JSON.parse(u); return; }
   } catch(e) {}
   // Crear admin por defecto
-  users = [{ email: 'ky211209@gmail.com', password: 'admin-dus-2109', role: 'admin' }];
+  users = [{ email: 'ky211209@gmail.com', password: 'admin-dus2109', role: 'admin' }];
   saveUsers();
 }
 function saveUsers() {
@@ -332,11 +332,11 @@ function loadData() {
         });
       });
     } else {
-      studentsByParalelo = { c2: initStudents(RAW_STUDENTS) };
-      saveData();
+      // Sin datos locales — Firebase los traerá en loadFromFirebase()
+      studentsByParalelo = {};
     }
   } catch(e) {
-    studentsByParalelo = { c2: initStudents(RAW_STUDENTS) };
+    studentsByParalelo = {};
   }
 }
 
