@@ -3,15 +3,46 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Listado — Paralelo C2</title>
+<title>SISORLIST · UNEMI</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<!-- ═══════════ HEADER ═══════════ -->
+<!-- ═══════════════════════════════════════
+     PANTALLA DE LOGIN
+════════════════════════════════════════ -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="login-logo-icon">📋</span>
+      <div>
+        <div class="login-title">SISORLIST</div>
+        <div class="login-subtitle">UNEMI · Sistema de Gestión de Estudiantes</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Correo electrónico</label>
+      <input type="email" id="loginEmail" placeholder="admin@unemi.edu.ec" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label>Contraseña</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="loginError" class="login-error" style="display:none"></div>
+    <button class="btn-primary" style="width:100%;padding:10px" onclick="doLogin()">Iniciar sesión</button>
+    <div class="login-hint">Solo usuarios autorizados por el administrador</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     APP PRINCIPAL
+════════════════════════════════════════ -->
+<div id="appMain" style="display:none">
+
+<!-- HEADER -->
 <header>
   <div class="header-left">
-    <h1 onclick="openRenameModal()" title="Clic para cambiar nombre del listado">
+    <h1 onclick="openRenameModal()" title="Clic para cambiar semestre y paralelo">
       <span id="headerSemestre">8vo Semestre</span>
       <span id="headerParalelo">— Paralelo C2</span>
       <span class="edit-hint">✎</span>
@@ -22,16 +53,34 @@
     <button class="btn-icon" onclick="copyEmails()" title="Copiar todos los correos">✉ Correos</button>
     <button class="btn-icon" onclick="copyNumbers()" title="Copiar números">📋 Números</button>
     <button class="btn-icon" onclick="exportCSV()">⬇ CSV</button>
-    <button class="btn-icon btn-excel" onclick="exportExcel()" title="Exportar listado completo a Excel">⬇ Excel</button>
-    <button class="btn-icon" onclick="openImport()">⬆ Importar TXT</button>
+    <button class="btn-icon btn-excel" onclick="exportExcel()" title="Exportar a Excel">⬇ Excel</button>
+    <button class="btn-icon btn-backup" onclick="downloadBackup()" title="Backup JSON">💾 Backup</button>
+    <div class="header-divider"></div>
+    <div class="user-badge" onclick="openPanel()">
+      <span id="userBadgeEmail">admin</span>
+      <span class="user-arrow">▾</span>
+    </div>
   </div>
 </header>
 
-<!-- ═══════════ STATS ═══════════ -->
+<!-- STATS BAR -->
 <div class="stats-bar">
   <div class="stat">
     <span class="stat-num" id="statTotal">—</span>
     <span class="stat-label">Total</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-num" id="statVerde">—</span>
+    <span class="stat-label semaforo-label verde-label">● Completos</span>
+  </div>
+  <div class="stat">
+    <span class="stat-num" id="statAmarillo">—</span>
+    <span class="stat-label semaforo-label amarillo-label">● Parciales</span>
+  </div>
+  <div class="stat">
+    <span class="stat-num" id="statRojo">—</span>
+    <span class="stat-label semaforo-label rojo-label">● Sin materias</span>
   </div>
   <div class="stat-divider"></div>
   <div class="stat">
@@ -54,37 +103,41 @@
   </div>
 </div>
 
-<!-- ═══════════ TABS ═══════════ -->
+<!-- TABS -->
 <div class="tabs-bar">
   <button class="tab active" onclick="switchTab('listado', this)">Listado</button>
   <button class="tab" onclick="switchTab('materias', this)">Por Materia</button>
   <button class="tab" onclick="switchTab('whatsapp', this)">WhatsApp</button>
+  <button class="tab" onclick="switchTab('auditoria', this)">🔍 Auditoría</button>
 </div>
 
 <!-- ═══════════ VIEW: LISTADO ═══════════ -->
 <div class="view active" id="view-listado">
-
-  <!-- Toolbar -->
   <div class="toolbar">
     <div class="search-box">
       <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="Buscar por nombre, celular o correo…" oninput="renderTable()">
+      <input type="text" id="searchInput" placeholder="Buscar por nombre, celular o correo… (Enter para agregar)" oninput="renderTable()" onkeydown="handleSearchKey(event)">
     </div>
+    <div class="paralelo-tabs" id="paraleloTabs"></div>
     <button class="filter-btn active" onclick="setFilter('todos', this)">Todos</button>
+    <button class="filter-btn semaforo-verde-btn" onclick="setFilter('verde', this)" title="Tienen todas las materias">🟢</button>
+    <button class="filter-btn semaforo-amarillo-btn" onclick="setFilter('amarillo', this)" title="Tienen algunas materias">🟡</button>
+    <button class="filter-btn semaforo-rojo-btn" onclick="setFilter('rojo', this)" title="Sin ninguna materia">🔴</button>
     <button class="filter-btn" onclick="setFilter('contel', this)">Con celular</button>
     <button class="filter-btn" onclick="setFilter('sintel', this)">Sin celular</button>
     <button class="filter-btn" onclick="setFilter('conmail', this)">Con correo</button>
     <button class="filter-btn" onclick="setFilter('sinmail', this)">Sin correo</button>
-    <button class="filter-btn filter-btn-warn" onclick="setFilter('sinmaterias', this)" title="Estudiantes sin ninguna materia registrada">⚠ Sin materias</button>
-    <button class="btn-danger-bulk" id="btnBulkDelete" onclick="bulkDelete()" style="display:none">🗑 Eliminar seleccionados (<span id="bulkCount">0</span>)</button>
-    <button class="btn-primary" onclick="openAddStudent()">+ Agregar</button>
+    <button class="btn-danger-bulk" id="btnBulkDelete" onclick="bulkDeleteSelected()" style="display:none">🗑 Eliminar sel. (<span id="bulkCount">0</span>)</button>
+    <button class="btn-icon-toolbar" onclick="openImport()" title="Importar TXT o XLSX del SGA">⬆ Importar</button>
+    <button class="btn-primary" onclick="openAddStudent()" title="Agregar (Enter)">+ Agregar</button>
   </div>
 
-  <!-- Tabla -->
   <div class="main-content">
-    <table>
+    <table id="mainTable">
       <thead>
         <tr>
+          <th class="col-check"><input type="checkbox" id="checkAll" onchange="toggleAll(this)" title="Seleccionar todo"></th>
+          <th class="col-sem"></th>
           <th class="col-num">#</th>
           <th class="col-nombre">Apellidos y Nombres</th>
           <th class="col-celular">Celular</th>
@@ -103,7 +156,7 @@
     </table>
     <div class="empty-state" id="emptyState" style="display:none">
       <div class="empty-icon">🔎</div>
-      <p>No se encontraron estudiantes con ese criterio de búsqueda.</p>
+      <p>No se encontraron estudiantes con ese criterio.</p>
     </div>
   </div>
 </div>
@@ -134,12 +187,10 @@
       <button class="btn-primary" onclick="copyNumbersWA()">📱 Copiar con formato WA</button>
       <button class="btn-primary" onclick="copyEmails()">✉ Copiar correos</button>
     </div>
-
     <div class="wa-section">
       <div class="section-label" style="margin-bottom:0.75rem">Con número registrado</div>
       <div id="waComList" style="font-size:12px;line-height:2;font-family:'IBM Plex Mono',monospace"></div>
     </div>
-
     <div class="wa-section" style="border-color:#f0c8c8">
       <div class="section-label" style="color:var(--red);margin-bottom:0.75rem">Sin número</div>
       <div id="waSinList" style="font-size:12px;line-height:2;font-family:'IBM Plex Mono',monospace;color:var(--text2)"></div>
@@ -147,24 +198,120 @@
   </div>
 </div>
 
+<!-- ═══════════ VIEW: AUDITORÍA ═══════════ -->
+<div class="view" id="view-auditoria">
+  <div class="materia-view-content">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+      <div class="section-label" style="margin-bottom:0">Historial de cambios del sistema</div>
+      <button class="btn-secondary" onclick="clearAuditLog()" style="font-size:11px">🗑 Limpiar historial</button>
+    </div>
+    <div id="auditContent"></div>
+  </div>
+</div>
+
+</div><!-- /appMain -->
+
 <!-- ═══════════════════════════════════════
-     MODAL — CAMBIAR NOMBRE DEL LISTADO
+     MODAL — PANEL DE CONTROL / ADMIN
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalPanel">
+  <div class="modal" style="max-width:520px">
+    <button class="modal-close" onclick="closePanel()">✕</button>
+    <h2>⚙ Panel de Control</h2>
+    <div class="panel-tabs">
+      <button class="panel-tab active" onclick="switchPanelTab('cuenta', this)">Mi cuenta</button>
+      <button class="panel-tab" onclick="switchPanelTab('usuarios', this)">Usuarios</button>
+      <button class="panel-tab" onclick="switchPanelTab('paralelos', this)">Paralelos</button>
+      <button class="panel-tab" onclick="switchPanelTab('materias_cfg', this)">Materias</button>
+    </div>
+
+    <!-- TAB: Cuenta -->
+    <div class="panel-section active" id="psec-cuenta">
+      <div class="form-group">
+        <label>Correo actual</label>
+        <input type="email" id="cfgEmail" placeholder="tu@unemi.edu.ec">
+      </div>
+      <div class="form-group">
+        <label>Nueva contraseña (dejar vacío para no cambiar)</label>
+        <input type="password" id="cfgPassword" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label>Confirmar contraseña</label>
+        <input type="password" id="cfgPassword2" placeholder="••••••••">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="doLogout()">🚪 Cerrar sesión</button>
+        <button class="btn-primary" onclick="saveCuenta()">Guardar cambios</button>
+      </div>
+    </div>
+
+    <!-- TAB: Usuarios -->
+    <div class="panel-section" id="psec-usuarios">
+      <div style="margin-bottom:0.75rem">
+        <div class="section-label">Usuarios con acceso</div>
+        <div id="usuariosLista" style="margin-bottom:0.75rem"></div>
+        <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+          <div class="section-label">Agregar usuario</div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
+            <input type="email" id="newUserEmail" placeholder="correo@unemi.edu.ec" style="flex:1;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+            <select id="newUserRole" style="padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface);outline:none">
+              <option value="viewer">Visualizador</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button class="btn-primary" onclick="addUser()">Agregar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Paralelos -->
+    <div class="panel-section" id="psec-paralelos">
+      <div class="section-label">Paralelos activos</div>
+      <div id="paralelosLista" style="margin-bottom:0.75rem"></div>
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div class="section-label">Agregar paralelo</div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
+          <input type="text" id="newParaleloNombre" placeholder="Ej: C3" style="width:80px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Mono',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none;text-transform:uppercase">
+          <input type="text" id="newParaleloSemestre" placeholder="Ej: 9no Semestre" style="flex:1;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+          <button class="btn-primary" onclick="addParalelo()">Agregar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: Materias -->
+    <div class="panel-section" id="psec-materias_cfg">
+      <div class="section-label">Materias del semestre actual</div>
+      <div id="materiasConfigLista" style="margin-bottom:0.75rem"></div>
+      <div style="border-top:1px solid var(--border);padding-top:0.75rem">
+        <div class="section-label">Agregar materia</div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap">
+          <input type="text" id="newMateriaKey" placeholder="clave (ej: bd)" style="width:90px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Mono',sans-serif;font-size:12px;color:var(--text);background:var(--surface);outline:none">
+          <input type="text" id="newMateriaName" placeholder="Nombre completo" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+          <button class="btn-primary" onclick="addMateria()">Agregar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL — CAMBIAR SEMESTRE / PARALELO
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalRename">
   <div class="modal" style="max-width:400px">
-    <button class="modal-close" onclick="closeRenameModal()" title="Cerrar">✕</button>
-    <h2>✎ Cambiar nombre del listado</h2>
+    <button class="modal-close" onclick="closeRenameModal()">✕</button>
+    <h2>✎ Cambiar semestre y paralelo</h2>
     <p style="font-size:12px;color:var(--text2);margin-bottom:1rem;line-height:1.5">
-      Actualiza el semestre y paralelo al inicio de cada ciclo académico.
-      Los datos de estudiantes se conservan.
+      Actualiza el semestre y paralelo al inicio de cada ciclo. Los datos de estudiantes se conservan.
     </p>
     <div class="form-group">
       <label>Semestre / Nivel</label>
       <input type="text" id="inputSemestre" placeholder="Ej: 9no Semestre">
     </div>
     <div class="form-group">
-      <label>Paralelo</label>
-      <input type="text" id="inputParalelo" placeholder="Ej: Paralelo C2">
+      <label>Paralelo activo</label>
+      <select id="inputParaleloSelect" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none"></select>
     </div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeRenameModal()">Cancelar</button>
@@ -178,12 +325,14 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalEditStudent">
   <div class="modal" style="max-width:420px">
-    <button class="modal-close" onclick="closeEditStudent()" title="Cerrar">✕</button>
+    <button class="modal-close" onclick="closeEditStudent()">✕</button>
     <h2>✎ Editar datos del estudiante</h2>
     <input type="hidden" id="editIdx">
     <div class="form-group">
-      <label>Apellidos y Nombres</label>
-      <input type="text" id="editNombreInput" style="text-transform:uppercase" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2">
+      <label>Apellidos y Nombres <span style="color:var(--red)">*</span></label>
+      <input type="text" id="editNombreInput" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2"
+        oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase">
+      <div class="field-hint">Solo mayúsculas · letras y espacios</div>
     </div>
     <div class="form-group">
       <label>Número de celular</label>
@@ -194,8 +343,8 @@
       <input type="email" id="editCorreoInput" placeholder="usuario@unemi.edu.ec">
     </div>
     <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeEditStudent()">Cancelar</button>
-      <button class="btn-primary" onclick="saveEditStudent()">Guardar cambios</button>
+      <button class="btn-secondary" onclick="closeEditStudent()">Cancelar (Esc)</button>
+      <button class="btn-primary" onclick="saveEditStudent()">Guardar (Enter)</button>
     </div>
   </div>
 </div>
@@ -205,11 +354,13 @@
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalAdd">
   <div class="modal" style="max-width:420px">
-    <button class="modal-close" onclick="closeAddStudent()" title="Cerrar">✕</button>
+    <button class="modal-close" onclick="closeAddStudent()">✕</button>
     <h2>+ Agregar estudiante</h2>
     <div class="form-group">
-      <label>Apellidos y Nombres</label>
-      <input type="text" id="addNombre" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2" style="text-transform:uppercase">
+      <label>Apellidos y Nombres <span style="color:var(--red)">*</span></label>
+      <input type="text" id="addNombre" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2"
+        oninput="this.value=this.value.toUpperCase()" style="text-transform:uppercase">
+      <div class="field-hint">Solo mayúsculas · letras y espacios</div>
     </div>
     <div class="form-group">
       <label>Número de celular</label>
@@ -220,38 +371,40 @@
       <input type="email" id="addCorreo" placeholder="usuario@unemi.edu.ec">
     </div>
     <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeAddStudent()">Cancelar</button>
-      <button class="btn-primary" onclick="addStudent()">Agregar</button>
+      <button class="btn-secondary" onclick="closeAddStudent()">Cancelar (Esc)</button>
+      <button class="btn-primary" onclick="addStudent()">Agregar (Enter)</button>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════
-     MODAL — IMPORTAR TXT
+     MODAL — IMPORTAR TXT / XLSX
 ════════════════════════════════════════ -->
 <div class="modal-overlay" id="modalImport">
   <div class="modal">
-    <button class="modal-close" onclick="closeImport()" title="Cerrar">✕</button>
-    <h2>⬆ Importar desde TXT del SGA</h2>
+    <button class="modal-close" onclick="closeImport()">✕</button>
+    <h2>⬆ Importar desde TXT o Excel del SGA</h2>
     <div class="form-group">
       <label>Materia</label>
-      <select id="importMateria">
-        <option value="ia">Inteligencia Artificial</option>
-        <option value="aud">Auditoría de TI</option>
-        <option value="deon">Deontología</option>
-        <option value="prac">Prácticas Laborales 1</option>
-        <option value="emp">Emprendimiento e Innovación</option>
-        <option value="for">Computación Forense</option>
-        <option value="prog">Programación Avanzada</option>
-      </select>
+      <select id="importMateria"></select>
     </div>
     <div class="form-group">
-      <label>Lista de nombres (uno por línea)</label>
+      <label>Fuente</label>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap">
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:7px 12px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:500">
+          📁 Subir .txt
+          <input type="file" accept=".txt,.csv" id="importFileTxt" style="display:none" onchange="loadImportFile(this,'txt')">
+        </label>
+        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;padding:7px 12px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:500;background:rgba(33,115,70,0.08);border-color:rgba(33,115,70,0.3)">
+          📊 Subir .xlsx del SGA
+          <input type="file" accept=".xlsx,.xls" id="importFileXlsx" style="display:none" onchange="loadImportFile(this,'xlsx')">
+        </label>
+        <span style="font-size:11px;color:var(--text3);align-self:center">o pega el texto abajo</span>
+      </div>
       <textarea id="importText" placeholder="Pega aquí el listado del SGA...
 Ejemplo:
 AGUILAR AGUILAR ANDREA JULIANA
-ALVARADO MONRROY CAROLINA MELANY
-BRAVO PARRAGA NATHALY MARIA"></textarea>
+ALVARADO MONRROY CAROLINA MELANY"></textarea>
     </div>
     <div class="import-result" id="importResult"></div>
     <div class="modal-actions">
