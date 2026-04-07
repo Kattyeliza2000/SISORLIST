@@ -555,16 +555,52 @@ function closeImport() {
   document.getElementById('importResult').classList.remove('show');
 }
 
+// Convierte formato SGA "NOMBRES APELLIDOS" → "APELLIDOS NOMBRES"
+// El SGA da 2 nombres + 2 apellidos: las últimas 2 palabras son los apellidos.
+// Ej: "NICOLAS ARNALDO AGUILAR BAJAÑA" → "AGUILAR BAJAÑA NICOLAS ARNALDO"
+function sgaNombreToApellidosNombre(fullName) {
+  const parts = fullName.trim().toUpperCase().split(/\s+/);
+  if (parts.length < 3) return parts.join(' ');
+  const apellidos = parts.slice(-2);
+  const nombres   = parts.slice(0, -2);
+  return [...apellidos, ...nombres].join(' ');
+}
+
+// Detecta si una línea viene del SGA: empieza con cédula/número separado por tab o espacios
+// Formato: "0956402895\tNICOLAS ARNALDO AGUILAR BAJAÑA"
+function parseSgaLine(line) {
+  const tabParts = line.split('\t').map(p => p.trim()).filter(p => p.length > 0);
+  if (tabParts.length >= 2 && /^\d{8,13}$/.test(tabParts[0])) {
+    return { cedula: tabParts[0], rawNombre: tabParts.slice(1).join(' ') };
+  }
+  const spaceParts = line.trim().split(/\s+/);
+  if (spaceParts.length >= 3 && /^\d{8,13}$/.test(spaceParts[0])) {
+    return { cedula: spaceParts[0], rawNombre: spaceParts.slice(1).join(' ') };
+  }
+  return null;
+}
+
 function processImport() {
   const mat  = document.getElementById('importMateria').value;
   const text = document.getElementById('importText').value;
   if (!text.trim()) { showToast('Pega el contenido del TXT primero'); return; }
 
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-  let matched = 0, newAdded = 0, alreadyHad = 0;
+  let matched = 0, newAdded = 0, alreadyHad = 0, sgaDetected = 0;
 
   lines.forEach(line => {
-    const normalized = normalizeNombre(line);
+    const sgaParsed = parseSgaLine(line);
+    let nombreFinal;
+
+    if (sgaParsed) {
+      sgaDetected++;
+      nombreFinal = sgaNombreToApellidosNombre(sgaParsed.rawNombre);
+    } else {
+      nombreFinal = line.trim().toUpperCase();
+    }
+
+    const normalized = normalizeNombre(nombreFinal);
+
     const found = students.find(s =>
       normalizeNombre(s.nombre) === normalized ||
       normalizeNombre(s.nombre).includes(normalized.slice(0,10)) ||
@@ -577,8 +613,8 @@ function processImport() {
     } else {
       students.push({
         id: Date.now() + Math.random(),
-        nombre: line.trim().toUpperCase(),
-        celular: '',
+        nombre: nombreFinal,
+        celular: sgaParsed ? sgaParsed.cedula : '',
         correo: '',
         nuevo: true,
         materias: { ...emptyMaterias(), [mat]: true }
@@ -590,9 +626,14 @@ function processImport() {
   saveData();
   renderAll();
 
+  const sgaNote = sgaDetected > 0
+    ? `• Formato SGA detectado (${sgaDetected} líneas reordenadas)\n`
+    : '';
+
   const res = document.getElementById('importResult');
   res.textContent =
     `✓ Proceso completado — ${MATERIA_NAMES[mat]}\n\n` +
+    sgaNote +
     `• ${matched} marcados en esta materia\n` +
     `• ${newAdded} nuevos agregados\n` +
     `• ${alreadyHad} ya estaban registrados\n` +
