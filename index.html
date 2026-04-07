@@ -22,6 +22,7 @@
     <button class="btn-icon" onclick="copyEmails()" title="Copiar todos los correos">✉ Correos</button>
     <button class="btn-icon" onclick="copyNumbers()" title="Copiar números">📋 Números</button>
     <button class="btn-icon" onclick="exportCSV()">⬇ CSV</button>
+    <button class="btn-icon btn-excel" onclick="exportExcel()" title="Exportar listado completo a Excel">⬇ Excel</button>
     <button class="btn-icon" onclick="openImport()">⬆ Importar TXT</button>
   </div>
 </header>
@@ -74,6 +75,8 @@
     <button class="filter-btn" onclick="setFilter('sintel', this)">Sin celular</button>
     <button class="filter-btn" onclick="setFilter('conmail', this)">Con correo</button>
     <button class="filter-btn" onclick="setFilter('sinmail', this)">Sin correo</button>
+    <button class="filter-btn filter-btn-warn" onclick="setFilter('sinmaterias', this)" title="Estudiantes sin ninguna materia registrada">⚠ Sin materias</button>
+    <button class="btn-danger-bulk" id="btnBulkDelete" onclick="bulkDelete()" style="display:none">🗑 Eliminar seleccionados (<span id="bulkCount">0</span>)</button>
     <button class="btn-primary" onclick="openAddStudent()">+ Agregar</button>
   </div>
 
@@ -261,6 +264,7 @@ BRAVO PARRAGA NATHALY MARIA"></textarea>
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
