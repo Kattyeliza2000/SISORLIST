@@ -398,7 +398,37 @@ function toggleMateria(idx, mat) {
 // ═══════════════════════════════════════════════════
 //  MODAL EDITAR ESTUDIANTE (nombre + celular + correo)
 // ═══════════════════════════════════════════════════
-function openEditStudent(idx) {
+//  VALIDACIONES
+// ═══════════════════════════════════════════════════
+function validarCelular(cel) {
+  if (!cel) return true; // opcional
+  // Acepta: solo dígitos, 7–15 caracteres, puede empezar con 593 o 09
+  return /^\d{7,15}$/.test(cel);
+}
+
+function validarCorreo(correo) {
+  if (!correo) return true; // opcional
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo);
+}
+
+function validarNombre(nombre) {
+  if (!nombre || nombre.trim().length < 3) return false;
+  // Solo letras, espacios, tildes, guiones — sin números ni símbolos
+  return /^[A-ZÁÉÍÓÚÜÑ\s\-']+$/i.test(nombre.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z\s\-']/g, ''));
+}
+
+function mostrarError(inputId, mensaje) {
+  const el = document.getElementById(inputId);
+  el.style.borderColor = 'var(--red)';
+  el.title = mensaje;
+  el.classList.add('input-error');
+  setTimeout(() => {
+    el.style.borderColor = '';
+    el.title = '';
+    el.classList.remove('input-error');
+  }, 2500);
+}
+
   const s = students[idx];
   document.getElementById('editIdx').value        = idx;
   document.getElementById('editNombreInput').value = s.nombre;
@@ -414,10 +444,21 @@ function closeEditStudent() {
 function saveEditStudent() {
   const idx  = parseInt(document.getElementById('editIdx').value);
   const nom  = document.getElementById('editNombreInput').value.trim().toUpperCase();
-  const cel  = document.getElementById('editCelularInput').value.trim();
+  const cel  = document.getElementById('editCelularInput').value.trim().replace(/\s+/g,'');
   const mail = document.getElementById('editCorreoInput').value.trim().toLowerCase();
 
-  if (!nom) { showToast('El nombre no puede estar vacío'); return; }
+  if (!nom || nom.length < 3) {
+    mostrarError('editNombreInput', 'El nombre es obligatorio y debe tener al menos 3 letras');
+    showToast('⚠ El nombre no puede estar vacío'); return;
+  }
+  if (!validarCelular(cel)) {
+    mostrarError('editCelularInput', 'Solo dígitos, entre 7 y 15 caracteres (ej: 593967179277)');
+    showToast('⚠ Número de celular inválido'); return;
+  }
+  if (!validarCorreo(mail)) {
+    mostrarError('editCorreoInput', 'Formato de correo inválido (ej: usuario@unemi.edu.ec)');
+    showToast('⚠ Correo institucional inválido'); return;
+  }
 
   students[idx].nombre  = nom;
   students[idx].celular = cel;
@@ -443,17 +484,31 @@ function closeAddStudent() {
 }
 
 function addStudent() {
-  const nombre = document.getElementById('addNombre').value.trim().toUpperCase();
-  if (!nombre) { showToast('Ingresa el nombre del estudiante'); return; }
+  const nombre  = document.getElementById('addNombre').value.trim().toUpperCase();
+  const celular = document.getElementById('addCelular').value.trim().replace(/\s+/g,'');
+  const correo  = document.getElementById('addCorreo').value.trim().toLowerCase();
+
+  if (!nombre || nombre.length < 3) {
+    mostrarError('addNombre', 'El nombre es obligatorio');
+    showToast('⚠ Ingresa el nombre del estudiante'); return;
+  }
+  if (!validarCelular(celular)) {
+    mostrarError('addCelular', 'Solo dígitos, entre 7 y 15 caracteres (ej: 593967179277)');
+    showToast('⚠ Número de celular inválido'); return;
+  }
+  if (!validarCorreo(correo)) {
+    mostrarError('addCorreo', 'Formato de correo inválido (ej: usuario@unemi.edu.ec)');
+    showToast('⚠ Correo institucional inválido'); return;
+  }
 
   const exists = students.find(s => normalizeNombre(s.nombre) === normalizeNombre(nombre));
-  if (exists) { showToast('Este estudiante ya existe en el listado'); return; }
+  if (exists) { showToast('⚠ Este estudiante ya existe en el listado'); return; }
 
   students.push({
     id: Date.now(),
     nombre,
-    celular: document.getElementById('addCelular').value.trim(),
-    correo:  document.getElementById('addCorreo').value.trim().toLowerCase(),
+    celular,
+    correo,
     nuevo: true,
     materias: emptyMaterias()
   });
@@ -461,7 +516,7 @@ function addStudent() {
   saveData();
   renderAll();
   closeAddStudent();
-  showToast(`${nombre} agregado al listado`);
+  showToast(`✓ ${nombre} agregado al listado`);
 }
 
 // ═══════════════════════════════════════════════════
