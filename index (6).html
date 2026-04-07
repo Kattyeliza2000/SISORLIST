@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Listado — Paralelo C2</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header>
+  <div class="header-left">
+    <h1 onclick="openRenameModal()" title="Clic para cambiar nombre del listado">
+      <span id="headerSemestre">8vo Semestre</span>
+      <span id="headerParalelo">— Paralelo C2</span>
+      <span class="edit-hint">✎</span>
+    </h1>
+    <div class="subtitle">UNEMI · Sistema Integrado de Gestión de Estudiantes</div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-icon" onclick="copyEmails()" title="Copiar todos los correos">✉ Correos</button>
+    <button class="btn-icon" onclick="copyNumbers()" title="Copiar números">📋 Números</button>
+    <button class="btn-icon" onclick="exportCSV()">⬇ CSV</button>
+    <button class="btn-icon" onclick="openImport()">⬆ Importar TXT</button>
+  </div>
+</header>
+
+<!-- ═══════════ STATS ═══════════ -->
+<div class="stats-bar">
+  <div class="stat">
+    <span class="stat-num" id="statTotal">—</span>
+    <span class="stat-label">Total</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-num" id="statConTel">—</span>
+    <span class="stat-label">Con celular</span>
+  </div>
+  <div class="stat">
+    <span class="stat-num" id="statSinTel">—</span>
+    <span class="stat-label">Sin celular</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-num" id="statConMail">—</span>
+    <span class="stat-label">Con correo</span>
+  </div>
+  <div class="stat-divider"></div>
+  <div class="stat">
+    <span class="stat-num" id="statNuevos">—</span>
+    <span class="stat-label">Nuevos</span>
+  </div>
+</div>
+
+<!-- ═══════════ TABS ═══════════ -->
+<div class="tabs-bar">
+  <button class="tab active" onclick="switchTab('listado', this)">Listado</button>
+  <button class="tab" onclick="switchTab('materias', this)">Por Materia</button>
+  <button class="tab" onclick="switchTab('whatsapp', this)">WhatsApp</button>
+</div>
+
+<!-- ═══════════ VIEW: LISTADO ═══════════ -->
+<div class="view active" id="view-listado">
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="searchInput" placeholder="Buscar por nombre, celular o correo…" oninput="renderTable()">
+    </div>
+    <button class="filter-btn active" onclick="setFilter('todos', this)">Todos</button>
+    <button class="filter-btn" onclick="setFilter('contel', this)">Con celular</button>
+    <button class="filter-btn" onclick="setFilter('sintel', this)">Sin celular</button>
+    <button class="filter-btn" onclick="setFilter('conmail', this)">Con correo</button>
+    <button class="filter-btn" onclick="setFilter('sinmail', this)">Sin correo</button>
+    <button class="btn-primary" onclick="openAddStudent()">+ Agregar</button>
+  </div>
+
+  <!-- Tabla -->
+  <div class="main-content">
+    <table>
+      <thead>
+        <tr>
+          <th class="col-num">#</th>
+          <th class="col-nombre">Apellidos y Nombres</th>
+          <th class="col-celular">Celular</th>
+          <th class="col-correo">Correo Institucional</th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-ia">IA</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-aud">AUD</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-deon">DEON</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-prac">PRAC</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-emp">EMP</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-for">FOR</div></th>
+          <th class="col-materia"><div class="materia-abbrev chip chip-prog">PROG</div></th>
+          <th class="col-accion">Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="empty-icon">🔎</div>
+      <p>No se encontraron estudiantes con ese criterio de búsqueda.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ VIEW: MATERIAS ═══════════ -->
+<div class="view" id="view-materias">
+  <div class="materia-view-content">
+    <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center">
+      <span class="section-label" style="margin-bottom:0;margin-right:4px">Filtrar por:</span>
+      <button class="mf-btn active" onclick="setMateriaFilter('todos',this)">Todas</button>
+      <button class="mf-btn" onclick="setMateriaFilter('ia',this)">IA</button>
+      <button class="mf-btn" onclick="setMateriaFilter('aud',this)">Auditoría TI</button>
+      <button class="mf-btn" onclick="setMateriaFilter('deon',this)">Deontología</button>
+      <button class="mf-btn" onclick="setMateriaFilter('prac',this)">Prácticas Lab.</button>
+      <button class="mf-btn" onclick="setMateriaFilter('emp',this)">Emprendimiento</button>
+      <button class="mf-btn" onclick="setMateriaFilter('for',this)">Cómputo Forense</button>
+      <button class="mf-btn" onclick="setMateriaFilter('prog',this)">Prog. Avanzada</button>
+    </div>
+    <div id="materiaContent"></div>
+  </div>
+</div>
+
+<!-- ═══════════ VIEW: WHATSAPP ═══════════ -->
+<div class="view" id="view-whatsapp">
+  <div class="wa-view-content">
+    <div style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap">
+      <button class="btn-primary" onclick="copyNumbers()">📋 Copiar números</button>
+      <button class="btn-primary" onclick="copyNumbersWA()">📱 Copiar con formato WA</button>
+      <button class="btn-primary" onclick="copyEmails()">✉ Copiar correos</button>
+    </div>
+
+    <div class="wa-section">
+      <div class="section-label" style="margin-bottom:0.75rem">Con número registrado</div>
+      <div id="waComList" style="font-size:12px;line-height:2;font-family:'IBM Plex Mono',monospace"></div>
+    </div>
+
+    <div class="wa-section" style="border-color:#f0c8c8">
+      <div class="section-label" style="color:var(--red);margin-bottom:0.75rem">Sin número</div>
+      <div id="waSinList" style="font-size:12px;line-height:2;font-family:'IBM Plex Mono',monospace;color:var(--text2)"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL — CAMBIAR NOMBRE DEL LISTADO
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalRename">
+  <div class="modal" style="max-width:400px">
+    <h2>✎ Cambiar nombre del listado</h2>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:1rem;line-height:1.5">
+      Actualiza el semestre y paralelo al inicio de cada ciclo académico.
+      Los datos de estudiantes se conservan.
+    </p>
+    <div class="form-group">
+      <label>Semestre / Nivel</label>
+      <input type="text" id="inputSemestre" placeholder="Ej: 9no Semestre">
+    </div>
+    <div class="form-group">
+      <label>Paralelo</label>
+      <input type="text" id="inputParalelo" placeholder="Ej: Paralelo C2">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeRenameModal()">Cancelar</button>
+      <button class="btn-primary" onclick="saveRename()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL — EDITAR ESTUDIANTE
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEditStudent">
+  <div class="modal" style="max-width:420px">
+    <h2>✎ Editar datos del estudiante</h2>
+    <input type="hidden" id="editIdx">
+    <div class="form-group">
+      <label>Apellidos y Nombres</label>
+      <input type="text" id="editNombreInput" style="text-transform:uppercase" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2">
+    </div>
+    <div class="form-group">
+      <label>Número de celular</label>
+      <input type="text" id="editCelularInput" placeholder="593XXXXXXXXX">
+    </div>
+    <div class="form-group">
+      <label>Correo institucional</label>
+      <input type="email" id="editCorreoInput" placeholder="usuario@unemi.edu.ec">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeEditStudent()">Cancelar</button>
+      <button class="btn-primary" onclick="saveEditStudent()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL — AGREGAR ESTUDIANTE
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalAdd">
+  <div class="modal" style="max-width:420px">
+    <h2>+ Agregar estudiante</h2>
+    <div class="form-group">
+      <label>Apellidos y Nombres</label>
+      <input type="text" id="addNombre" placeholder="APELLIDO1 APELLIDO2 NOMBRE1 NOMBRE2" style="text-transform:uppercase">
+    </div>
+    <div class="form-group">
+      <label>Número de celular</label>
+      <input type="text" id="addCelular" placeholder="593XXXXXXXXX">
+    </div>
+    <div class="form-group">
+      <label>Correo institucional</label>
+      <input type="email" id="addCorreo" placeholder="usuario@unemi.edu.ec">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeAddStudent()">Cancelar</button>
+      <button class="btn-primary" onclick="addStudent()">Agregar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL — IMPORTAR TXT
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalImport">
+  <div class="modal">
+    <h2>⬆ Importar desde TXT del SGA</h2>
+    <div class="form-group">
+      <label>Materia</label>
+      <select id="importMateria">
+        <option value="ia">Inteligencia Artificial</option>
+        <option value="aud">Auditoría de TI</option>
+        <option value="deon">Deontología</option>
+        <option value="prac">Prácticas Laborales 1</option>
+        <option value="emp">Emprendimiento e Innovación</option>
+        <option value="for">Computación Forense</option>
+        <option value="prog">Programación Avanzada</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Lista de nombres (uno por línea)</label>
+      <textarea id="importText" placeholder="Pega aquí el listado del SGA...
+Ejemplo:
+AGUILAR AGUILAR ANDREA JULIANA
+ALVARADO MONRROY CAROLINA MELANY
+BRAVO PARRAGA NATHALY MARIA"></textarea>
+    </div>
+    <div class="import-result" id="importResult"></div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeImport()">Cancelar</button>
+      <button class="btn-primary" onclick="processImport()">Procesar e Importar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script src="script.js"></script>
+</body>
+</html>
