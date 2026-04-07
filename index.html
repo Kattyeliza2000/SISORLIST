@@ -560,5 +560,18 @@ ALVARADO MONRROY CAROLINA MELANY"></textarea>
   window.addEventListener('load', checkResetHash);
 </script>
 <script src="script.js"></script>
+<script>
+function togglePassword() {
+  const input = document.getElementById('loginPassword');
+  const btn   = document.getElementById('toggleBtn');
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.textContent = '🙈';
+  } else {
+    input.type = 'password';
+    btn.textContent = '👁';
+  }
+}
+</script>
 </body>
 </html>
