@@ -183,7 +183,7 @@ function initStudents(raw) {
     materias: emptyMaterias()
   }));
 }
-function get students() { return studentsByParalelo[activeParaleloId] || []; }
+function getStudents() { return studentsByParalelo[activeParaleloId] || []; }
 function setStudents(arr) { studentsByParalelo[activeParaleloId] = arr; }
 
 // Semáforo
