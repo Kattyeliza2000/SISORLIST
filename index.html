@@ -30,9 +30,6 @@
     </div>
     <div id="loginError" class="login-error" style="display:none"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="doLogin()">Iniciar sesión</button>
-    <div style="text-align:center;margin-top:0.6rem">
-      <a href="#" onclick="openForgotModal();return false;" style="font-size:12px;color:#2563eb;text-decoration:none;opacity:0.85">¿Olvidaste tu contraseña?</a>
-    </div>
     <div class="login-hint">Solo usuarios autorizados por el administrador</div>
   </div>
 </div>
@@ -418,145 +415,10 @@ ALVARADO MONRROY CAROLINA MELANY"></textarea>
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
-<!-- ═══════════════════════════════════════
-     MODAL — RECUPERAR CONTRASEÑA
-════════════════════════════════════════ -->
-<div class="modal-overlay" id="modalForgot" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:none;align-items:center;justify-content:center">
-  <div class="modal" style="max-width:400px;width:90%">
-    <button class="modal-close" onclick="closeForgotModal()">✕</button>
-    <h2>🔑 Recuperar contraseña</h2>
-    <p style="font-size:13px;color:var(--text2,#666);margin-bottom:1rem;line-height:1.5">
-      Ingresa tu correo registrado y te enviaremos un enlace para restablecer tu contraseña.
-    </p>
-    <div class="form-group">
-      <label>Correo electrónico</label>
-      <input type="email" id="forgotEmail" placeholder="tu@correo.com" style="width:100%;box-sizing:border-box">
-    </div>
-    <div id="forgotMsg" style="display:none;font-size:13px;padding:8px 12px;border-radius:6px;margin-bottom:0.75rem"></div>
-    <div class="modal-actions">
-      <button class="btn-secondary" onclick="closeForgotModal()">Cancelar</button>
-      <button class="btn-primary" id="btnForgotSend" onclick="sendResetLink()">Enviar enlace</button>
-    </div>
-  </div>
-</div>
+
+
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script>
-  // Token store: { token → { email, expires } }
-  const LS_RESET_TOKENS = 'sisorlist_reset_tokens_v1';
-
-  function getResetTokens() {
-    try { return JSON.parse(localStorage.getItem(LS_RESET_TOKENS) || '{}'); }
-    catch(e) { return {}; }
-  }
-  function saveResetTokens(t) {
-    localStorage.setItem(LS_RESET_TOKENS, JSON.stringify(t));
-  }
-
-  function openForgotModal() {
-    document.getElementById('forgotEmail').value = '';
-    const msg = document.getElementById('forgotMsg');
-    msg.style.display = 'none';
-    document.getElementById('btnForgotSend').disabled = false;
-    document.getElementById('modalForgot').style.display = 'flex';
-    setTimeout(() => document.getElementById('forgotEmail').focus(), 100);
-  }
-  function closeForgotModal() {
-    document.getElementById('modalForgot').style.display = 'none';
-  }
-
-  function sendResetLink() {
-    const email = document.getElementById('forgotEmail').value.trim().toLowerCase();
-    const msg   = document.getElementById('forgotMsg');
-    const btn   = document.getElementById('btnForgotSend');
-
-    if (!email) {
-      showForgotMsg('Ingresa tu correo electrónico.', 'error'); return;
-    }
-
-    // Verificar que el correo existe en el sistema
-    const userExists = users.find(u => u.email === email);
-    if (!userExists) {
-      // Por seguridad mostramos el mismo mensaje aunque no exista
-      showForgotMsg('Si ese correo está registrado, recibirás un enlace en breve.', 'ok');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Enviando…';
-
-    // Generar token único
-    const token   = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now();
-    const expires = Date.now() + 60 * 60 * 1000; // 1 hora
-    const tokens  = getResetTokens();
-    tokens[token] = { email, expires };
-    saveResetTokens(tokens);
-
-    // Construir link de reset (apunta al mismo index.html con el token en hash)
-    const resetLink = `${location.href.split('#')[0]}#reset:${token}`;
-
-    // Abrir cliente de correo con el mensaje listo
-    const subject = encodeURIComponent('Recuperar contrasena - SISORLIST');
-    const body    = encodeURIComponent('Hola,\n\nHaz clic en el siguiente enlace para restablecer tu contrasena:\n\n' + resetLink + '\n\nEste enlace expira en 1 hora.\n\nSISORLIST - UNEMI');
-    window.location.href = 'mailto:' + email + '?subject=' + subject + '&body=' + body;
-    showForgotMsg('Tu cliente de correo se abrio con el mensaje listo. Envialo para recibir el enlace.', 'ok');
-
-    btn.disabled  = false;
-    btn.textContent = 'Enviar enlace';
-  }
-
-  function showForgotMsg(html, type) {
-    const el = document.getElementById('forgotMsg');
-    el.innerHTML = html;
-    el.style.display = 'block';
-    el.style.background = type === 'ok' ? '#d1fae5' : type === 'error' ? '#fee2e2' : '#fef9c3';
-    el.style.color      = type === 'ok' ? '#065f46' : type === 'error' ? '#991b1b' : '#713f12';
-  }
-
-  // ── Procesar reset al cargar la página si hay token en el hash ────────────
-  function checkResetHash() {
-    const hash = location.hash;
-    if (!hash.startsWith('#reset:')) return;
-    const token  = hash.slice(7);
-    const tokens = getResetTokens();
-    const entry  = tokens[token];
-
-    if (!entry || entry.expires < Date.now()) {
-      alert('El enlace de recuperación ha expirado o no es válido. Solicita uno nuevo.');
-      history.replaceState(null, '', location.pathname);
-      return;
-    }
-
-    const newPass = prompt(`Ingresa tu nueva contraseña para ${entry.email}:`);
-    if (!newPass || newPass.length < 4) {
-      alert('La contraseña debe tener al menos 4 caracteres.');
-      return;
-    }
-    const confirm2 = prompt('Confirma la nueva contraseña:');
-    if (newPass !== confirm2) {
-      alert('Las contraseñas no coinciden. Vuelve a intentarlo.');
-      return;
-    }
-
-    // Cargar usuarios y actualizar
-    let us = [];
-    try { us = JSON.parse(localStorage.getItem('sisorlist_users_v1') || '[]'); } catch(e) {}
-    const u = us.find(x => x.email === entry.email);
-    if (u) {
-      u.password = newPass;
-      localStorage.setItem('sisorlist_users_v1', JSON.stringify(us));
-    }
-
-    // Invalidar token
-    delete tokens[token];
-    saveResetTokens(tokens);
-
-    history.replaceState(null, '', location.pathname);
-    alert('✅ Contraseña actualizada correctamente. Ya puedes iniciar sesión.');
-  }
-
-  window.addEventListener('load', checkResetHash);
-</script>
 <script src="script.js"></script>
 <script>
 function togglePassword() {
