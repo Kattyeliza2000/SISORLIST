@@ -661,24 +661,34 @@ function openRenameModal() {
   sel.innerHTML = paralelos.map(p =>
     `<option value="${p.id}" ${p.id === activeParaleloId ? 'selected' : ''}>${p.nombre} — ${p.semestre}</option>`
   ).join('');
+  // Rellenar nombre editable del paralelo activo
+  const active = paralelos.find(p => p.id === activeParaleloId);
+  document.getElementById('inputParaleloNombre').value = active ? active.nombre : '';
   document.getElementById('modalRename').classList.add('open');
+}
+function onParaleloSelectChange(sel) {
+  const p = paralelos.find(x => x.id === sel.value);
+  if (p) document.getElementById('inputParaleloNombre').value = p.nombre;
 }
 function closeRenameModal() { document.getElementById('modalRename').classList.remove('open'); }
 function saveRename() {
-  const sem = document.getElementById('inputSemestre').value.trim();
-  const pid = document.getElementById('inputParaleloSelect').value;
-  if (!sem) { showToast('Ingresa el semestre'); return; }
+  const sem    = document.getElementById('inputSemestre').value.trim();
+  const pid    = document.getElementById('inputParaleloSelect').value;
+  const nombre = document.getElementById('inputParaleloNombre').value.trim().toUpperCase();
+  if (!sem)    { showToast('Ingresa el semestre'); return; }
+  if (!nombre) { showToast('Ingresa el nombre del paralelo'); return; }
   const p = paralelos.find(x => x.id === pid);
   if (p) {
     p.semestre = sem;
+    p.nombre   = nombre;
     activeParaleloId = pid;
-    listadoConfig = { semestre: sem, paralelo: p.nombre };
+    listadoConfig = { semestre: sem, paralelo: nombre };
     saveParalelos();
     saveConfig();
     syncFirebase();
     updateHeaderTitle();
     renderParaleloTabs();
-    auditEntry('✎', `Cambio de semestre a "${sem}" — Paralelo ${p.nombre}`);
+    auditEntry('✎', `Cambio a "${sem}" — Paralelo ${nombre}`);
     closeRenameModal();
     showToast('Semestre y paralelo actualizados');
   }
@@ -1029,7 +1039,7 @@ function processImport() {
       sts.push({
         id: 'std_' + Date.now() + '_' + Math.random(),
         nombre: nombreFinal,
-        celular: sgaParsed ? sgaParsed.cedula : '',
+        celular: '',
         correo: '', nuevo: true,
         materias: { ...emptyMaterias(), [mat]: true }
       });
@@ -1058,7 +1068,7 @@ function processImport() {
 //  EXPORTAR
 // ═══════════════════════════════════════════════════
 function exportCSV() {
-  const sts = studentsByParalelo[activeParaleloId] || [];
+  const sts = getFiltered();
   const header = ['#','Nombre','Celular','Correo','Semáforo',...MATERIAS.map(m => MATERIAS_MAP[m])];
   const rows = sts.map((s, i) => [
     i+1, s.nombre, s.celular, s.correo, semaforo(s),
@@ -1070,12 +1080,12 @@ function exportCSV() {
   const a    = document.createElement('a');
   a.href = url; a.download = `listado_${listadoConfig.semestre}_${listadoConfig.paralelo}.csv`.replace(/\s+/g,'_');
   a.click(); URL.revokeObjectURL(url);
-  showToast('CSV exportado');
+  showToast(`CSV exportado: ${sts.length} estudiantes`);
 }
 
 function exportExcel() {
   if (typeof XLSX === 'undefined') { showToast('Error: librería Excel no cargada'); return; }
-  const sts = studentsByParalelo[activeParaleloId] || [];
+  const sts = getFiltered();
   const wb  = XLSX.utils.book_new();
   const headerRow = ['#','Apellidos y Nombres','Celular','Correo Institucional','Semáforo',
     ...MATERIAS.map(m => MATERIAS_MAP[m])];
