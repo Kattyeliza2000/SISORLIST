@@ -1252,6 +1252,33 @@ function renderParalelosLista() {
         ${paralelos.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeParalelo(${i})">✕</button>` : ''}
       </div>
     </div>`).join('');
+  // Prellenar campos de edición con el paralelo activo
+  const activo = paralelos.find(p => p.id === activeParaleloId);
+  if (activo) {
+    const nInput = document.getElementById('editParaleloNombre');
+    const sInput = document.getElementById('editParaleloSemestre');
+    if (nInput) nInput.value = activo.nombre;
+    if (sInput) sInput.value = activo.semestre;
+  }
+}
+
+function saveEditParalelo() {
+  const nombre = (document.getElementById('editParaleloNombre').value || '').trim().toUpperCase();
+  const sem    = (document.getElementById('editParaleloSemestre').value || '').trim();
+  if (!nombre || !sem) { showToast('Completa el nombre y el semestre'); return; }
+  const p = paralelos.find(x => x.id === activeParaleloId);
+  if (!p) { showToast('No hay paralelo activo'); return; }
+  const anterior = `${p.nombre} — ${p.semestre}`;
+  p.nombre   = nombre;
+  p.semestre = sem;
+  listadoConfig = { semestre: sem, paralelo: nombre };
+  saveParalelos();
+  saveData(`Paralelo modificado: ${nombre}`);
+  auditEntry('✏️', `Paralelo modificado: ${anterior} → ${nombre} — ${sem}`);
+  updateHeaderTitle();
+  renderParalelosLista();
+  renderParaleloTabs();
+  showToast(`Paralelo actualizado: ${nombre} — ${sem}`);
 }
 function switchParaleloPanel(id) {
   activeParaleloId = id;
