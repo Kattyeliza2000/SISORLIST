@@ -271,11 +271,11 @@
       <div class="section-label">Paralelos activos</div>
       <div id="paralelosLista" style="margin-bottom:0.75rem"></div>
       <div style="border-top:1px solid var(--border);padding-top:0.75rem">
-        <div class="section-label">Agregar paralelo</div>
+        <div class="section-label">Modificar paralelo activo</div>
         <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
-          <input type="text" id="newParaleloNombre" placeholder="Ej: C3" style="width:80px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Mono',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none;text-transform:uppercase">
-          <input type="text" id="newParaleloSemestre" placeholder="Ej: 9no Semestre" style="flex:1;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
-          <button class="btn-primary" onclick="addParalelo()">Agregar</button>
+          <input type="text" id="editParaleloNombre" placeholder="Ej: C3" style="width:80px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Mono',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none;text-transform:uppercase">
+          <input type="text" id="editParaleloSemestre" placeholder="Ej: 9no Semestre" style="flex:1;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+          <button class="btn-primary" onclick="saveEditParalelo()">Guardar</button>
         </div>
       </div>
     </div>
