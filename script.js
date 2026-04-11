@@ -1160,8 +1160,34 @@ function copyEmails() {
 // ═══════════════════════════════════════════════════
 //  PANEL DE CONTROL
 // ═══════════════════════════════════════════════════
+// ─── Dropdown menú usuario ───
+function toggleUserMenu() {
+  const dd = document.getElementById('userDropdown');
+  const isOpen = dd.classList.contains('open');
+  dd.classList.toggle('open', !isOpen);
+  // actualizar el email en el dropdown
+  if (!isOpen && currentSession) {
+    document.getElementById('userDropdownEmail').textContent = currentSession.email;
+  }
+}
+function openPanelFromMenu() {
+  document.getElementById('userDropdown').classList.remove('open');
+  openPanel();
+}
+// Cerrar dropdown al click fuera
+document.addEventListener('click', function(e) {
+  const wrap = document.getElementById('userBadgeWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    const dd = document.getElementById('userDropdown');
+    if (dd) dd.classList.remove('open');
+  }
+});
+
 function openPanel() {
-  // Cargar datos en el panel
+  // Ocultar tab Usuarios si no es admin
+  const tabUsuarios = document.querySelector('.panel-tab[onclick*="usuarios"]');
+  if (tabUsuarios) tabUsuarios.style.display = currentSession && currentSession.role === 'admin' ? '' : 'none';
+
   document.getElementById('cfgEmail').value    = currentSession ? currentSession.email : '';
   document.getElementById('cfgPassword').value = '';
   document.getElementById('cfgPassword2').value= '';
@@ -1177,6 +1203,48 @@ function switchPanelTab(id, btn) {
   document.querySelectorAll('.panel-section').forEach(s => s.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('psec-' + id).classList.add('active');
+}
+
+// ─── Editar usuario (solo admin) ───
+function openEditUser(i) {
+  if (!currentSession || currentSession.role !== 'admin') return;
+  const u = users[i];
+  document.getElementById('editUserIdx').value      = i;
+  document.getElementById('editUserEmail').value    = u.email;
+  document.getElementById('editUserPassword').value = '';
+  document.getElementById('editUserRole').value     = u.role;
+  // reset eye buttons
+  document.getElementById('editUserPassword').type  = 'password';
+  document.getElementById('modalEditUser').classList.add('open');
+}
+function closeEditUser() { document.getElementById('modalEditUser').classList.remove('open'); }
+function saveEditUser() {
+  const i        = parseInt(document.getElementById('editUserIdx').value);
+  const email    = document.getElementById('editUserEmail').value.trim().toLowerCase();
+  const password = document.getElementById('editUserPassword').value;
+  const role     = document.getElementById('editUserRole').value;
+  if (!email) { showToast('Ingresa el correo'); return; }
+  // no puede haber duplicado excepto él mismo
+  if (users.find((u, idx) => u.email === email && idx !== i)) { showToast('Ese correo ya está en uso'); return; }
+  const oldEmail = users[i].email;
+  users[i].email = email;
+  users[i].role  = role;
+  if (password) {
+    if (password.length < 6) { showToast('La contraseña debe tener al menos 6 caracteres'); return; }
+    users[i].password = password;
+  }
+  // si editó su propio usuario, actualizar sesión
+  if (currentSession.email === oldEmail) {
+    currentSession.email = email;
+    currentSession.role  = role;
+    localStorage.setItem(LS_AUTH, JSON.stringify(currentSession));
+    document.getElementById('userBadgeEmail').textContent = email.split('@')[0];
+  }
+  saveUsers();
+  auditEntry('🔧', `Usuario editado: ${oldEmail} → ${email} (${role})`);
+  renderUsuariosLista();
+  closeEditUser();
+  showToast('Usuario actualizado');
 }
 
 // --- Cuenta ---
@@ -1205,6 +1273,7 @@ function saveCuenta() {
 function renderUsuariosLista() {
   const cont = document.getElementById('usuariosLista');
   if (!cont) return;
+  const isAdmin = currentSession && currentSession.role === 'admin';
   const ROLE_LABEL = { admin: 'Admin', editor: 'Editor', viewer: 'Visualizador' };
   cont.innerHTML = users.map((u, i) => `
     <div class="user-row">
@@ -1212,7 +1281,10 @@ function renderUsuariosLista() {
         <div class="user-row-email">${u.email}</div>
         <div style="margin-top:3px"><span class="user-role-badge role-${u.role}">${ROLE_LABEL[u.role] || u.role}</span></div>
       </div>
-      ${users.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeUser(${i})">✕</button>` : ''}
+      ${isAdmin ? `<div style="display:flex;gap:0.4rem;align-items:center">
+        <button class="btn-secondary" style="font-size:11px;padding:4px 8px" onclick="openEditUser(${i})">✎ Editar</button>
+        ${users.length > 1 ? `<button class="btn-danger" style="font-size:10px" onclick="removeUser(${i})">✕</button>` : ''}
+      </div>` : ''}
     </div>`).join('');
 }
 function addUser() {
