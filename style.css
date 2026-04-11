@@ -489,6 +489,76 @@ td.col-correo a:hover { text-decoration: underline; }
 /* Materia abbrev */
 .materia-abbrev { display: inline-block; }
 
+
+/* ═══════════ USER DROPDOWN ═══════════ */
+.user-badge-wrap {
+  position: relative;
+}
+.user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.13);
+  z-index: 9999;
+  overflow: hidden;
+}
+.user-dropdown.open { display: block; }
+.user-dropdown-email {
+  padding: 10px 14px 8px;
+  font-size: 11px;
+  color: var(--text3);
+  font-family: 'IBM Plex Mono', monospace;
+  word-break: break-all;
+}
+.user-dropdown-divider { height: 1px; background: var(--border); }
+.user-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 10px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.user-dropdown-item:hover { background: var(--surface2); }
+.user-dropdown-logout { color: var(--red); }
+.user-dropdown-logout:hover { background: var(--red-light); }
+
+/* ═══════════ PASSWORD EYE TOGGLE ═══════════ */
+.password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.password-wrap input {
+  width: 100%;
+  padding-right: 36px !important;
+}
+.eye-btn {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+  color: var(--text3);
+  transition: color 0.15s;
+  user-select: none;
+}
+.eye-btn:hover { color: var(--text); }
+
+
 @media (max-width: 700px) {
   header, .stats-bar, .toolbar, .main-content,
   .materia-view-content, .wa-view-content { padding-left: 1rem; padding-right: 1rem; }
