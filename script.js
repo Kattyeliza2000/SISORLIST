@@ -471,9 +471,70 @@ async function loadFromFirebase() {
 }
 
 // ═══════════════════════════════════════════════════
-//  RENDER PRINCIPAL
+//  HELPERS DE ROL
 // ═══════════════════════════════════════════════════
+function isViewer()  { return currentSession && currentSession.role === 'viewer'; }
+function isEditor()  { return currentSession && currentSession.role === 'editor'; }
+function isAdmin()   { return currentSession && currentSession.role === 'admin'; }
+function canEdit()   { return isAdmin() || isEditor(); }
+
+function applyRoleUI() {
+  const viewer = isViewer();
+  const admin  = isAdmin();
+
+  // Header: exportar y backup — solo admin/editor
+  document.querySelectorAll('.btn-icon, .btn-excel, .btn-backup').forEach(b => {
+    b.style.display = viewer ? 'none' : '';
+  });
+
+  // Header: título clickeable (cambiar semestre) — solo admin
+  const h1 = document.querySelector('header h1');
+  if (h1) {
+    h1.style.cursor    = admin ? 'pointer' : 'default';
+    h1.onclick         = admin ? openRenameModal : null;
+    const hint = h1.querySelector('.edit-hint');
+    if (hint) hint.style.display = admin ? '' : 'none';
+  }
+
+  // Dropdown: Panel de Control — solo admin/editor
+  const panelBtn = document.querySelector('.user-dropdown-item[onclick*="openPanelFromMenu"]');
+  if (panelBtn) panelBtn.style.display = viewer ? 'none' : '';
+
+  // Tabs: WhatsApp y Auditoría — solo admin/editor
+  document.querySelectorAll('.tab').forEach(t => {
+    const txt = t.textContent.trim();
+    if (txt.includes('WhatsApp') || txt.includes('Auditoría')) {
+      t.style.display = viewer ? 'none' : '';
+    }
+  });
+
+  // Toolbar: botones de acción — solo admin/editor
+  const btnImport  = document.querySelector('.btn-icon-toolbar[onclick*="openImport"]');
+  const btnAdd     = document.querySelector('.btn-primary[onclick*="openAddStudent"]');
+  const btnBulk    = document.getElementById('btnBulkDelete');
+  if (btnImport) btnImport.style.display = viewer ? 'none' : '';
+  if (btnAdd)    btnAdd.style.display    = viewer ? 'none' : '';
+  if (btnBulk)   btnBulk.style.display  = viewer ? 'none' : '';
+
+  // Columna checkbox — solo admin/editor
+  const checkAllTh = document.querySelector('th.col-check');
+  if (checkAllTh) checkAllTh.style.display = viewer ? 'none' : '';
+  const accionTh = document.querySelector('th.col-accion');
+  if (accionTh) accionTh.style.display = viewer ? 'none' : '';
+
+  // Placeholder del buscador
+  const search = document.getElementById('searchInput');
+  if (search) {
+    search.placeholder = viewer
+      ? 'Buscar por nombre, celular o correo…'
+      : 'Buscar por nombre, celular o correo… (Enter para agregar)';
+    search.onkeydown = viewer ? null : handleSearchKey;
+  }
+}
+
+
 function renderAll() {
+  applyRoleUI();
   renderTable();
   renderStats();
   renderMateria();
@@ -539,11 +600,12 @@ function renderTable() {
   const tbody = document.getElementById('tableBody');
   const empty = document.getElementById('emptyState');
   if (!tbody) return;
+  const viewer = isViewer();
 
   if (!filtered.length) {
     tbody.innerHTML = '';
     empty.style.display = 'block';
-    updateBulkButton();
+    if (!viewer) updateBulkButton();
     return;
   }
   empty.style.display = 'none';
@@ -551,7 +613,6 @@ function renderTable() {
   // Rebuild header chips dynamically
   const thead = document.querySelector('#mainTable thead tr');
   if (thead) {
-    // remove old materia headers
     const oldMats = thead.querySelectorAll('th.col-materia');
     oldMats.forEach(el => el.remove());
     const actTh = thead.querySelector('th.col-accion');
@@ -569,39 +630,41 @@ function renderTable() {
     const sem = semaforo(s);
     const semDot = `<span class="sem-dot sem-${sem}" title="${sem === 'verde' ? 'Completo' : sem === 'amarillo' ? 'Parcial' : 'Sin materias'}"></span>`;
 
-    const telCell = s.celular
-      ? `<span class="celular-edit" onclick="openEditStudent(${idx})">${s.celular}</span>`
-      : `<span class="badge-notel" onclick="openEditStudent(${idx})" title="Clic para agregar">sin número</span>`;
+    // En modo viewer: celular y correo sin clic editable
+    const telCell = viewer
+      ? (s.celular ? `<span>${s.celular}</span>` : `<span class="badge-notel">sin número</span>`)
+      : (s.celular
+          ? `<span class="celular-edit" onclick="openEditStudent(${idx})">${s.celular}</span>`
+          : `<span class="badge-notel" onclick="openEditStudent(${idx})" title="Clic para agregar">sin número</span>`);
 
     const mailCell = s.correo
       ? `<a href="mailto:${s.correo}" title="${s.correo}">${s.correo}</a>`
       : `<span class="badge-nomail">sin correo</span>`;
 
-    const checks = MATERIAS.map(m => `
-      <td class="check-cell" onclick="toggleMateria(${idx},'${m}')">
-        <div class="check-icon ${s.materias[m] ? 'checked' : ''}">${s.materias[m] ? '✓' : ''}</div>
-      </td>`).join('');
+    // En modo viewer: checks sin onclick
+    const checks = MATERIAS.map(m => viewer
+      ? `<td class="check-cell"><div class="check-icon ${s.materias[m] ? 'checked' : ''}" style="cursor:default">${s.materias[m] ? '✓' : ''}</div></td>`
+      : `<td class="check-cell" onclick="toggleMateria(${idx},'${m}')"><div class="check-icon ${s.materias[m] ? 'checked' : ''}">${s.materias[m] ? '✓' : ''}</div></td>`
+    ).join('');
 
     const isSelected = selectedIds.has(s.id);
 
     return `<tr class="${s.nuevo ? 'highlight-new' : ''}${isSelected ? ' selected-row' : ''}" id="row_${s.id}">
-      <td class="col-check">
-        <input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${s.id}', this.checked)">
-      </td>
+      ${viewer ? '' : `<td class="col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} onchange="toggleSelect('${s.id}', this.checked)"></td>`}
       <td class="col-sem">${semDot}</td>
       <td class="col-num">${i+1}</td>
       <td class="col-nombre">${s.nombre}${s.nuevo ? '<span class="badge-new">NUEVO</span>' : ''}</td>
       <td class="col-celular">${telCell}</td>
       <td class="col-correo">${mailCell}</td>
       ${checks}
-      <td>
-        <button class="btn-icon" style="background:rgba(45,90,61,0.12);color:var(--accent-text);border-color:rgba(45,90,61,0.2);margin-right:3px" onclick="openEditStudent(${idx})" title="Editar (Doble clic)">✎</button>
+      ${viewer ? '' : `<td>
+        <button class="btn-icon" style="background:rgba(45,90,61,0.12);color:var(--accent-text);border-color:rgba(45,90,61,0.2);margin-right:3px" onclick="openEditStudent(${idx})" title="Editar">✎</button>
         <button class="btn-danger" onclick="removeStudent(${idx})" title="Eliminar">✕</button>
-      </td>
+      </td>`}
     </tr>`;
   }).join('');
 
-  updateBulkButton();
+  if (!viewer) updateBulkButton();
 }
 
 // ═══════════════════════════════════════════════════
@@ -632,6 +695,7 @@ function updateBulkButton() {
   }
 }
 function bulkDeleteSelected() {
+  if (!canEdit()) return;
   if (!selectedIds.size) return;
   const sts = studentsByParalelo[activeParaleloId] || [];
   const names = sts.filter(s => selectedIds.has(s.id)).slice(0,3).map(s => '• ' + s.nombre).join('\n');
@@ -724,6 +788,7 @@ function setMateriaFilter(mat, btn) {
 //  TOGGLE MATERIA
 // ═══════════════════════════════════════════════════
 function toggleMateria(idx, mat) {
+  if (!canEdit()) return;
   const sts = studentsByParalelo[activeParaleloId];
   const prev = sts[idx].materias[mat];
   sts[idx].materias[mat] = !prev;
@@ -768,6 +833,7 @@ function mostrarError(inputId, mensaje) {
 //  MODAL EDITAR ESTUDIANTE
 // ═══════════════════════════════════════════════════
 function openEditStudent(idx) {
+  if (!canEdit()) return;
   const sts = studentsByParalelo[activeParaleloId];
   const s   = sts[idx];
   document.getElementById('editIdx').value         = idx;
@@ -812,6 +878,7 @@ function saveEditStudent() {
 //  MODAL AGREGAR ESTUDIANTE
 // ═══════════════════════════════════════════════════
 function openAddStudent() {
+  if (!canEdit()) return;
   document.getElementById('addNombre').value  = '';
   document.getElementById('addCelular').value = '';
   document.getElementById('addCorreo').value  = '';
@@ -853,6 +920,7 @@ function addStudent() {
 //  ELIMINAR ESTUDIANTE
 // ═══════════════════════════════════════════════════
 function removeStudent(idx) {
+  if (!canEdit()) return;
   const sts = studentsByParalelo[activeParaleloId];
   const s   = sts[idx];
   if (!confirm(`¿Eliminar a ${s.nombre} del listado?`)) return;
@@ -939,6 +1007,7 @@ function renderWhatsApp() {
 //  IMPORT TXT / XLSX
 // ═══════════════════════════════════════════════════
 function openImport() {
+  if (!canEdit()) return;
   document.getElementById('modalImport').classList.add('open');
   rebuildImportMateriaSelect();
 }
@@ -1068,6 +1137,7 @@ function processImport() {
 //  EXPORTAR
 // ═══════════════════════════════════════════════════
 function exportCSV() {
+  if (isViewer()) return;
   const sts = getFiltered();
   const header = ['#','Nombre','Celular','Correo','Semáforo',...MATERIAS.map(m => MATERIAS_MAP[m])];
   const rows = sts.map((s, i) => [
@@ -1084,6 +1154,7 @@ function exportCSV() {
 }
 
 function exportExcel() {
+  if (isViewer()) return;
   if (typeof XLSX === 'undefined') { showToast('Error: librería Excel no cargada'); return; }
   const sts = getFiltered();
   const wb  = XLSX.utils.book_new();
@@ -1119,6 +1190,7 @@ function exportExcel() {
 }
 
 function downloadBackup() {
+  if (isViewer()) return;
   const backup = {
     exportedAt: new Date().toISOString(),
     exportedBy: currentSession ? currentSession.email : 'sistema',
@@ -1184,9 +1256,15 @@ document.addEventListener('click', function(e) {
 });
 
 function openPanel() {
-  // Ocultar tab Usuarios si no es admin
-  const tabUsuarios = document.querySelector('.panel-tab[onclick*="usuarios"]');
-  if (tabUsuarios) tabUsuarios.style.display = currentSession && currentSession.role === 'admin' ? '' : 'none';
+  if (isViewer()) { showToast('Sin acceso al panel de control'); return; }
+
+  // Tabs visibles según rol
+  const tabUsuarios  = document.querySelector('.panel-tab[onclick*="usuarios"]');
+  const tabParalelos = document.querySelector('.panel-tab[onclick*="paralelos"]');
+  const tabMaterias  = document.querySelector('.panel-tab[onclick*="materias_cfg"]');
+  if (tabUsuarios)  tabUsuarios.style.display  = isAdmin() ? '' : 'none';
+  if (tabParalelos) tabParalelos.style.display = isAdmin() ? '' : 'none';
+  if (tabMaterias)  tabMaterias.style.display  = isAdmin() ? '' : 'none';
 
   document.getElementById('cfgEmail').value    = currentSession ? currentSession.email : '';
   document.getElementById('cfgPassword').value = '';
