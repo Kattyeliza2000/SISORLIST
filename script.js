@@ -1216,16 +1216,20 @@ function renderUsuariosLista() {
     </div>`).join('');
 }
 function addUser() {
-  const email = document.getElementById('newUserEmail').value.trim().toLowerCase();
-  const role  = document.getElementById('newUserRole').value;
-  if (!email) { showToast('Ingresa el correo'); return; }
+  const email    = document.getElementById('newUserEmail').value.trim().toLowerCase();
+  const password = document.getElementById('newUserPassword').value;
+  const role     = document.getElementById('newUserRole').value;
+  if (!email)    { showToast('Ingresa el correo'); return; }
+  if (!password) { showToast('Ingresa una contraseña'); return; }
+  if (password.length < 6) { showToast('La contraseña debe tener al menos 6 caracteres'); return; }
   if (users.find(u => u.email === email)) { showToast('Este usuario ya existe'); return; }
-  users.push({ email, password: 'unemi2025', role });
+  users.push({ email, password, role });
   saveUsers();
   auditEntry('👤', `Usuario agregado: ${email} (${role})`);
   renderUsuariosLista();
-  document.getElementById('newUserEmail').value = '';
-  showToast(`Usuario agregado — contraseña inicial: unemi2025`);
+  document.getElementById('newUserEmail').value    = '';
+  document.getElementById('newUserPassword').value = '';
+  showToast(`Usuario ${email} agregado correctamente`);
 }
 function removeUser(i) {
   if (users[i].email === currentSession.email) { showToast('No puedes eliminar tu propio usuario'); return; }
