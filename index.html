@@ -26,7 +26,10 @@
     </div>
     <div class="form-group">
       <label>Contraseña</label>
-      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+      <div class="password-wrap">
+        <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password">
+        <button type="button" class="eye-btn" onclick="toggleEye('loginPassword', this)" tabindex="-1">👁</button>
+      </div>
     </div>
     <div id="loginError" class="login-error" style="display:none"></div>
     <button class="btn-primary" style="width:100%;padding:10px" onclick="doLogin()">Iniciar sesión</button>
@@ -54,9 +57,18 @@
     <button class="btn-icon btn-excel" onclick="exportExcel()" title="Exportar a Excel">⬇ Excel</button>
     <button class="btn-icon btn-backup" onclick="downloadBackup()" title="Backup JSON">💾 Backup</button>
     <div class="header-divider"></div>
-    <div class="user-badge" onclick="openPanel()">
-      <span id="userBadgeEmail">admin</span>
-      <span class="user-arrow">▾</span>
+    <div class="user-badge-wrap" id="userBadgeWrap">
+      <div class="user-badge" onclick="toggleUserMenu()">
+        <span id="userBadgeEmail">admin</span>
+        <span class="user-arrow">▾</span>
+      </div>
+      <div class="user-dropdown" id="userDropdown">
+        <div class="user-dropdown-email" id="userDropdownEmail"></div>
+        <div class="user-dropdown-divider"></div>
+        <button class="user-dropdown-item" onclick="openPanelFromMenu()">⚙ Panel de Control</button>
+        <div class="user-dropdown-divider"></div>
+        <button class="user-dropdown-item user-dropdown-logout" onclick="doLogout()">🚪 Cerrar sesión</button>
+      </div>
     </div>
   </div>
 </header>
@@ -231,14 +243,19 @@
       </div>
       <div class="form-group">
         <label>Nueva contraseña (dejar vacío para no cambiar)</label>
-        <input type="password" id="cfgPassword" placeholder="••••••••">
+        <div class="password-wrap">
+          <input type="password" id="cfgPassword" placeholder="••••••••">
+          <button type="button" class="eye-btn" onclick="toggleEye('cfgPassword', this)" tabindex="-1">👁</button>
+        </div>
       </div>
       <div class="form-group">
         <label>Confirmar contraseña</label>
-        <input type="password" id="cfgPassword2" placeholder="••••••••">
+        <div class="password-wrap">
+          <input type="password" id="cfgPassword2" placeholder="••••••••">
+          <button type="button" class="eye-btn" onclick="toggleEye('cfgPassword2', this)" tabindex="-1">👁</button>
+        </div>
       </div>
       <div class="modal-actions">
-        <button class="btn-secondary" onclick="doLogout()">🚪 Cerrar sesión</button>
         <button class="btn-primary" onclick="saveCuenta()">Guardar cambios</button>
       </div>
     </div>
@@ -252,7 +269,10 @@
           <div class="section-label">Agregar usuario</div>
           <div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap">
             <input type="email" id="newUserEmail" placeholder="correo@unemi.edu.ec" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
-            <input type="password" id="newUserPassword" placeholder="Contraseña" style="width:130px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+            <div class="password-wrap" style="width:145px">
+              <input type="password" id="newUserPassword" placeholder="Contraseña" style="width:100%;padding:7px 36px 7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+              <button type="button" class="eye-btn" onclick="toggleEye('newUserPassword', this)" tabindex="-1">👁</button>
+            </div>
             <select id="newUserRole" style="padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface);outline:none">
               <option value="viewer">Visualizador</option>
               <option value="editor">Editor</option>
@@ -413,6 +433,40 @@ ALVARADO MONRROY CAROLINA MELANY"></textarea>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════
+     MODAL — EDITAR USUARIO (solo admin)
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEditUser">
+  <div class="modal" style="max-width:400px">
+    <button class="modal-close" onclick="closeEditUser()">✕</button>
+    <h2>✎ Editar usuario</h2>
+    <input type="hidden" id="editUserIdx">
+    <div class="form-group">
+      <label>Correo electrónico</label>
+      <input type="email" id="editUserEmail" placeholder="correo@unemi.edu.ec">
+    </div>
+    <div class="form-group">
+      <label>Nueva contraseña (dejar vacío para no cambiar)</label>
+      <div class="password-wrap">
+        <input type="password" id="editUserPassword" placeholder="••••••••">
+        <button type="button" class="eye-btn" onclick="toggleEye('editUserPassword', this)" tabindex="-1">👁</button>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="editUserRole" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+        <option value="viewer">Visualizador</option>
+        <option value="editor">Editor</option>
+        <option value="admin">Admin</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeEditUser()">Cancelar</button>
+      <button class="btn-primary" onclick="saveEditUser()">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 
@@ -422,9 +476,9 @@ ALVARADO MONRROY CAROLINA MELANY"></textarea>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="script.js"></script>
 <script>
-function togglePassword() {
-  const input = document.getElementById('loginPassword');
-  const btn   = document.getElementById('toggleBtn');
+function toggleEye(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
   if (input.type === 'password') {
     input.type = 'text';
     btn.textContent = '🙈';
@@ -433,6 +487,7 @@ function togglePassword() {
     btn.textContent = '👁';
   }
 }
+function togglePassword() { toggleEye('loginPassword', document.getElementById('toggleBtn')); }
 </script>
 </body>
 </html>
