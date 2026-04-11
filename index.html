@@ -250,8 +250,9 @@
         <div id="usuariosLista" style="margin-bottom:0.75rem"></div>
         <div style="border-top:1px solid var(--border);padding-top:0.75rem">
           <div class="section-label">Agregar usuario</div>
-          <div style="display:flex;gap:0.5rem;margin-top:0.4rem">
-            <input type="email" id="newUserEmail" placeholder="correo@unemi.edu.ec" style="flex:1;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+          <div style="display:flex;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap">
+            <input type="email" id="newUserEmail" placeholder="correo@unemi.edu.ec" style="flex:1;min-width:160px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
+            <input type="password" id="newUserPassword" placeholder="Contraseña" style="width:130px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface);outline:none">
             <select id="newUserRole" style="padding:7px 10px;border:1px solid var(--border2);border-radius:6px;font-family:'IBM Plex Sans',sans-serif;font-size:12px;color:var(--text);background:var(--surface);outline:none">
               <option value="viewer">Visualizador</option>
               <option value="editor">Editor</option>
