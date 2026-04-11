@@ -549,14 +549,18 @@ td.col-correo a:hover { text-decoration: underline; }
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 15px;
-  line-height: 1;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   color: var(--text3);
   transition: color 0.15s;
   user-select: none;
 }
 .eye-btn:hover { color: var(--text); }
+.eye-btn svg { display: block; }
 
 
 @media (max-width: 700px) {
