@@ -124,7 +124,7 @@
 <!-- ═══════════ VIEW: LISTADO ═══════════ -->
 <div class="view active" id="view-listado">
   <div class="toolbar">
-    <!-- Fila 1: búsqueda + paralelos + acciones -->
+    <!-- Fila 1: búsqueda + acciones -->
     <div class="toolbar-top">
       <div class="search-box">
         <span class="search-icon">🔍</span>
@@ -139,7 +139,7 @@
       </div>
     </div>
     <!-- Fila 2: filtros combinables -->
-    <div class="filter-bar" id="filterBar">
+    <div class="filter-bar">
       <div class="filter-group">
         <span class="filter-group-label">Estado</span>
         <div class="filter-group-btns">
@@ -162,13 +162,15 @@
           <button class="filter-btn" data-filter="sinmail" onclick="toggleFilter('sinmail',this)">Sin correo</button>
         </div>
       </div>
+      <!-- Chips de materia 3 estados — generados por JS -->
       <div class="filter-group" id="filterGroupMaterias">
-        <span class="filter-group-label">Materia inscrita</span>
+        <span class="filter-group-label">Materias <span class="filter-mat-hint">(clic: inscritos · 2° clic: no inscritos · 3°: quitar)</span></span>
         <div class="filter-group-btns" id="filterMateriasBtns"></div>
       </div>
+      <!-- Resumen activo -->
       <div class="filter-summary" id="filterSummary" style="display:none">
         <span id="filterSummaryText"></span>
-        <button class="filter-clear-btn" onclick="clearAllFilters()" title="Limpiar todos los filtros">✕ Limpiar</button>
+        <button class="filter-clear-btn" onclick="clearAllFilters()">✕ Limpiar</button>
       </div>
     </div>
   </div>
