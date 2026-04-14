@@ -124,22 +124,53 @@
 <!-- ═══════════ VIEW: LISTADO ═══════════ -->
 <div class="view active" id="view-listado">
   <div class="toolbar">
-    <div class="search-box">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="searchInput" placeholder="Buscar por nombre, celular o correo… (Enter para agregar)" oninput="renderTable()" onkeydown="handleSearchKey(event)">
+    <!-- Fila 1: búsqueda + paralelos + acciones -->
+    <div class="toolbar-top">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="searchInput" placeholder="Buscar por nombre, celular o correo… (Enter para agregar)" oninput="renderTable()" onkeydown="handleSearchKey(event)">
+      </div>
+      <div class="paralelo-tabs" id="paraleloTabs"></div>
+      <div class="toolbar-actions">
+        <button class="btn-danger-bulk" id="btnBulkDelete" onclick="bulkDeleteSelected()" style="display:none">🗑 Eliminar sel. (<span id="bulkCount">0</span>)</button>
+        <button class="btn-filter-export" id="btnFilterExport" onclick="exportFiltered()" style="display:none" title="Exportar resultado filtrado">⬇ Exportar filtro</button>
+        <button class="btn-icon-toolbar" onclick="openImport()" title="Importar TXT o XLSX del SGA">⬆ Importar</button>
+        <button class="btn-primary" onclick="openAddStudent()" title="Agregar (Enter)">+ Agregar</button>
+      </div>
     </div>
-    <div class="paralelo-tabs" id="paraleloTabs"></div>
-    <button class="filter-btn active" onclick="setFilter('todos', this)">Todos</button>
-    <button class="filter-btn semaforo-verde-btn" onclick="setFilter('verde', this)" title="Tienen todas las materias">🟢</button>
-    <button class="filter-btn semaforo-amarillo-btn" onclick="setFilter('amarillo', this)" title="Tienen algunas materias">🟡</button>
-    <button class="filter-btn semaforo-rojo-btn" onclick="setFilter('rojo', this)" title="Sin ninguna materia">🔴</button>
-    <button class="filter-btn" onclick="setFilter('contel', this)">Con celular</button>
-    <button class="filter-btn" onclick="setFilter('sintel', this)">Sin celular</button>
-    <button class="filter-btn" onclick="setFilter('conmail', this)">Con correo</button>
-    <button class="filter-btn" onclick="setFilter('sinmail', this)">Sin correo</button>
-    <button class="btn-danger-bulk" id="btnBulkDelete" onclick="bulkDeleteSelected()" style="display:none">🗑 Eliminar sel. (<span id="bulkCount">0</span>)</button>
-    <button class="btn-icon-toolbar" onclick="openImport()" title="Importar TXT o XLSX del SGA">⬆ Importar</button>
-    <button class="btn-primary" onclick="openAddStudent()" title="Agregar (Enter)">+ Agregar</button>
+    <!-- Fila 2: filtros combinables -->
+    <div class="filter-bar" id="filterBar">
+      <div class="filter-group">
+        <span class="filter-group-label">Estado</span>
+        <div class="filter-group-btns">
+          <button class="filter-btn" data-filter="verde"    onclick="toggleFilter('verde',this)"    title="Tienen todas las materias">🟢 Completos</button>
+          <button class="filter-btn" data-filter="amarillo" onclick="toggleFilter('amarillo',this)" title="Tienen algunas materias">🟡 Parciales</button>
+          <button class="filter-btn" data-filter="rojo"     onclick="toggleFilter('rojo',this)"     title="Sin ninguna materia">🔴 Sin materias</button>
+        </div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-group-label">Celular</span>
+        <div class="filter-group-btns">
+          <button class="filter-btn" data-filter="contel" onclick="toggleFilter('contel',this)">Con número</button>
+          <button class="filter-btn" data-filter="sintel" onclick="toggleFilter('sintel',this)">Sin número</button>
+        </div>
+      </div>
+      <div class="filter-group">
+        <span class="filter-group-label">Correo</span>
+        <div class="filter-group-btns">
+          <button class="filter-btn" data-filter="conmail" onclick="toggleFilter('conmail',this)">Con correo</button>
+          <button class="filter-btn" data-filter="sinmail" onclick="toggleFilter('sinmail',this)">Sin correo</button>
+        </div>
+      </div>
+      <div class="filter-group" id="filterGroupMaterias">
+        <span class="filter-group-label">Materia inscrita</span>
+        <div class="filter-group-btns" id="filterMateriasBtns"></div>
+      </div>
+      <div class="filter-summary" id="filterSummary" style="display:none">
+        <span id="filterSummaryText"></span>
+        <button class="filter-clear-btn" onclick="clearAllFilters()" title="Limpiar todos los filtros">✕ Limpiar</button>
+      </div>
+    </div>
   </div>
 
   <div class="main-content">
