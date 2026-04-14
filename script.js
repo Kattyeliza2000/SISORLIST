@@ -154,7 +154,8 @@ let paralelos = [];        // [{ id, nombre, semestre, active }]
 let activeParaleloId = 'c2';
 let studentsByParalelo = {}; // { paraleloId: [...] }
 let listadoConfig = { semestre: '8vo Semestre', paralelo: 'C2' };
-let activeFilters  = new Set(); // multi-select combinable (AND)
+let activeFilters   = new Set();      // filtros activos (AND): 'verde','sintel','conmail'...
+let materiaFilters  = {};             // { ia: 1=inscritos, 2=no inscritos } — 3 estados
 let currentMateriaFilter = 'todos';
 let selectedIds = new Set();
 let auditLog = [];
@@ -512,12 +513,9 @@ function applyRoleUI() {
   const btnImport  = document.querySelector('.btn-icon-toolbar[onclick*="openImport"]');
   const btnAdd     = document.querySelector('.btn-primary[onclick*="openAddStudent"]');
   const btnBulk    = document.getElementById('btnBulkDelete');
-  const btnFltExp  = document.getElementById('btnFilterExport');
   if (btnImport) btnImport.style.display = viewer ? 'none' : '';
   if (btnAdd)    btnAdd.style.display    = viewer ? 'none' : '';
   if (btnBulk)   btnBulk.style.display  = viewer ? 'none' : '';
-  // btnFilterExport: se oculta para viewer siempre; para otros lo controla updateFilterSummary
-  if (btnFltExp && viewer) btnFltExp.style.display = 'none';
 
   // Columna checkbox — solo admin/editor
   const checkAllTh = document.querySelector('th.col-check');
@@ -539,6 +537,7 @@ function applyRoleUI() {
 function renderAll() {
   applyRoleUI();
   buildFilterMateriasBtns();
+  updateFilterSummary();
   renderTable();
   renderStats();
   renderMateria();
@@ -546,7 +545,6 @@ function renderAll() {
   renderAudit();
   renderParaleloTabs();
   rebuildImportMateriaSelect();
-  updateFilterSummary();
 }
 
 function rebuildImportMateriaSelect() {
@@ -584,36 +582,25 @@ function getFiltered() {
   const ql  = q.toLowerCase();
 
   return sts.filter(s => {
-    // Búsqueda de texto
-    const matchQ = !q ||
-      s.nombre.toLowerCase().includes(ql) ||
-      s.celular.includes(ql) ||
-      s.correo.toLowerCase().includes(ql);
+    // Búsqueda texto
+    if (q && !s.nombre.toLowerCase().includes(ql) &&
+             !s.celular.includes(ql) &&
+             !s.correo.toLowerCase().includes(ql)) return false;
 
-    if (!matchQ) return false;
-    if (!activeFilters.size) return true; // sin filtros = todos
-
+    // Filtros simples (AND)
     const sem = semaforo(s);
+    if (activeFilters.has('verde')    && sem !== 'verde')    return false;
+    if (activeFilters.has('amarillo') && sem !== 'amarillo') return false;
+    if (activeFilters.has('rojo')     && sem !== 'rojo')     return false;
+    if (activeFilters.has('contel')   && !s.celular)         return false;
+    if (activeFilters.has('sintel')   && s.celular)          return false;
+    if (activeFilters.has('conmail')  && !s.correo)          return false;
+    if (activeFilters.has('sinmail')  && s.correo)           return false;
 
-    // Cada filtro activo debe cumplirse (AND)
-    for (const f of activeFilters) {
-      if (f === 'verde'    && sem !== 'verde')    return false;
-      if (f === 'amarillo' && sem !== 'amarillo') return false;
-      if (f === 'rojo'     && sem !== 'rojo')     return false;
-      if (f === 'contel'   && !s.celular)         return false;
-      if (f === 'sintel'   && s.celular)          return false;
-      if (f === 'conmail'  && !s.correo)          return false;
-      if (f === 'sinmail'  && s.correo)           return false;
-      // filtros de materia: prefijo "mat_"
-      if (f.startsWith('mat_')) {
-        const key = f.slice(4);
-        if (!s.materias[key]) return false;
-      }
-      // filtros "sin materia": prefijo "nomat_"
-      if (f.startsWith('nomat_')) {
-        const key = f.slice(6);
-        if (s.materias[key]) return false;
-      }
+    // Filtros de materia (3 estados): 1=inscritos, 2=no inscritos
+    for (const [key, state] of Object.entries(materiaFilters)) {
+      if (state === 1 && !s.materias[key]) return false;
+      if (state === 2 &&  s.materias[key]) return false;
     }
     return true;
   });
@@ -786,20 +773,20 @@ function saveRename() {
 // ═══════════════════════════════════════════════════
 //  FILTROS COMBINABLES (multi-select AND)
 // ═══════════════════════════════════════════════════
+
+// Filtros simples: toggle on/off con exclusión de conflictos
 function toggleFilter(f, btn) {
-  // Conflictos: no puede estar con/sin a la vez
   const conflicts = {
-    contel: 'sintel', sintel: 'contel',
-    conmail: 'sinmail', sinmail: 'conmail',
-    verde: ['amarillo','rojo'], amarillo: ['verde','rojo'], rojo: ['verde','amarillo']
+    contel:'sintel', sintel:'contel',
+    conmail:'sinmail', sinmail:'conmail',
+    verde:['amarillo','rojo'], amarillo:['verde','rojo'], rojo:['verde','amarillo']
   };
   const conflict = conflicts[f];
   if (conflict) {
-    const toRemove = Array.isArray(conflict) ? conflict : [conflict];
-    toRemove.forEach(c => {
+    [].concat(conflict).forEach(c => {
       activeFilters.delete(c);
-      const cb = document.querySelector(`.filter-btn[data-filter="${c}"]`);
-      if (cb) cb.classList.remove('active');
+      const el = document.querySelector(`.filter-btn[data-filter="${c}"]`);
+      if (el) el.classList.remove('active');
     });
   }
   if (activeFilters.has(f)) {
@@ -814,11 +801,38 @@ function toggleFilter(f, btn) {
   renderTable();
 }
 
+// Chips de materia: 3 estados (neutro → inscritos → no inscritos → neutro)
+function cycleMatFilter(key) {
+  const current = materiaFilters[key] || 0;
+  const next = (current + 1) % 3;
+  if (next === 0) delete materiaFilters[key];
+  else materiaFilters[key] = next;
+  // Actualizar visual del chip
+  const chip = document.querySelector(`.mat-filter-chip[data-mat="${key}"]`);
+  if (chip) {
+    chip.dataset.state = next;
+    const label = chip.querySelector('.mat-chip-label');
+    if (next === 0) { chip.className = 'mat-filter-chip'; label.textContent = MATERIAS_MAP[key] || key.toUpperCase(); }
+    if (next === 1) { chip.className = 'mat-filter-chip mat-state-yes'; label.textContent = '✓ ' + (MATERIAS_MAP[key] || key.toUpperCase()); }
+    if (next === 2) { chip.className = 'mat-filter-chip mat-state-no';  label.textContent = '✗ ' + (MATERIAS_MAP[key] || key.toUpperCase()); }
+  }
+  selectedIds.clear();
+  updateFilterSummary();
+  renderTable();
+}
+
 function clearAllFilters() {
   activeFilters.clear();
+  materiaFilters = {};
   document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
-  updateFilterSummary();
+  document.querySelectorAll('.mat-filter-chip').forEach(c => {
+    c.className = 'mat-filter-chip';
+    c.dataset.state = 0;
+    const label = c.querySelector('.mat-chip-label');
+    if (label) label.textContent = MATERIAS_MAP[c.dataset.mat] || c.dataset.mat.toUpperCase();
+  });
   selectedIds.clear();
+  updateFilterSummary();
   renderTable();
 }
 
@@ -826,11 +840,13 @@ function updateFilterSummary() {
   const summary = document.getElementById('filterSummary');
   const text    = document.getElementById('filterSummaryText');
   const btnExp  = document.getElementById('btnFilterExport');
-  if (!summary) return;
 
-  if (!activeFilters.size) {
-    summary.style.display = 'none';
-    if (btnExp) btnExp.style.display = 'none';
+  const hasSimple  = activeFilters.size > 0;
+  const hasMateria = Object.keys(materiaFilters).length > 0;
+
+  if (!hasSimple && !hasMateria) {
+    if (summary) summary.style.display = 'none';
+    if (btnExp)  btnExp.style.display  = 'none';
     return;
   }
 
@@ -839,17 +855,16 @@ function updateFilterSummary() {
     contel:'Con número', sintel:'Sin número',
     conmail:'Con correo', sinmail:'Sin correo'
   };
-
-  const parts = [...activeFilters].map(f => {
-    if (f.startsWith('mat_'))   return `Con ${MATERIAS_MAP[f.slice(4)]  || f.slice(4)}`;
-    if (f.startsWith('nomat_')) return `Sin ${MATERIAS_MAP[f.slice(6)]  || f.slice(6)}`;
-    return labels[f] || f;
-  });
+  const parts = [...activeFilters].map(f => labels[f] || f);
+  for (const [key, state] of Object.entries(materiaFilters)) {
+    const name = MATERIAS_MAP[key] || key.toUpperCase();
+    parts.push(state === 1 ? `✓ ${name}` : `✗ ${name}`);
+  }
 
   const count = getFiltered().length;
-  text.textContent = `${parts.join(' + ')} → ${count} estudiante${count !== 1 ? 's' : ''}`;
-  summary.style.display = 'flex';
-  if (btnExp && !isViewer()) btnExp.style.display = '';
+  if (text) text.textContent = `${parts.join('  +  ')}  →  ${count} estudiante${count !== 1 ? 's' : ''}`;
+  if (summary) summary.style.display = 'flex';
+  if (btnExp && typeof isViewer === 'function' && !isViewer()) btnExp.style.display = '';
 }
 
 function buildFilterMateriasBtns() {
@@ -857,35 +872,34 @@ function buildFilterMateriasBtns() {
   if (!cont) return;
   cont.innerHTML = MATERIAS.map(k => {
     const chipClass = CHIP_CLASSES[k] || 'chip-ia';
-    return `
-      <button class="filter-btn filter-mat-btn" data-filter="mat_${k}"
-        title="Tiene ${MATERIAS_MAP[k]}"
-        onclick="toggleFilter('mat_${k}',this)">
-        <span class="chip chip-xs ${chipClass}">${k.toUpperCase()}</span> Inscritos
-      </button>
-      <button class="filter-btn filter-mat-btn filter-nomat" data-filter="nomat_${k}"
-        title="No tiene ${MATERIAS_MAP[k]}"
-        onclick="toggleFilter('nomat_${k}',this)">
-        <span class="chip chip-xs ${chipClass}">${k.toUpperCase()}</span> No inscritos
-      </button>`;
+    const state = materiaFilters[k] || 0;
+    const label = state === 1 ? '✓ ' + MATERIAS_MAP[k]
+                : state === 2 ? '✗ ' + MATERIAS_MAP[k]
+                : MATERIAS_MAP[k];
+    const stateClass = state === 1 ? 'mat-state-yes' : state === 2 ? 'mat-state-no' : '';
+    return `<button class="mat-filter-chip ${stateClass}" data-mat="${k}" data-state="${state}"
+      onclick="cycleMatFilter('${k}')" title="Clic: inscritos · 2° clic: no inscritos · 3°: quitar">
+      <span class="chip chip-xs ${chipClass}">${k.toUpperCase()}</span>
+      <span class="mat-chip-label">${label}</span>
+    </button>`;
   }).join('');
 }
 
 function exportFiltered() {
-  if (isViewer()) return;
+  if (typeof isViewer === 'function' && isViewer()) return;
   const sts = getFiltered();
   if (!sts.length) { showToast('No hay estudiantes con ese filtro'); return; }
 
-  const labels = {
-    verde:'Completos', amarillo:'Parciales', rojo:'Sin materias',
-    contel:'Con número', sintel:'Sin número',
-    conmail:'Con correo', sinmail:'Sin correo'
+  const simpleLabels = {
+    verde:'Completos', amarillo:'Parciales', rojo:'Sin_materias',
+    contel:'Con_numero', sintel:'Sin_numero',
+    conmail:'Con_correo', sinmail:'Sin_correo'
   };
-  const filterName = [...activeFilters].map(f => {
-    if (f.startsWith('mat_'))   return `Con_${f.slice(4)}`;
-    if (f.startsWith('nomat_')) return `Sin_${f.slice(6)}`;
-    return labels[f] || f;
-  }).join('_') || 'todos';
+  const parts = [...activeFilters].map(f => simpleLabels[f] || f);
+  for (const [key, state] of Object.entries(materiaFilters)) {
+    parts.push((state === 1 ? 'Con_' : 'Sin_') + key);
+  }
+  const filterName = parts.join('_') || 'filtrado';
 
   const header = ['#','Apellidos y Nombres','Celular','Correo','Estado',
     ...MATERIAS.map(m => MATERIAS_MAP[m])];
@@ -893,20 +907,17 @@ function exportFiltered() {
     i+1, s.nombre, s.celular||'', s.correo||'', semaforo(s),
     ...MATERIAS.map(m => s.materias[m] ? 'X' : '')
   ]);
-
   const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
-  ws['!cols'] = [{ wch:4 },{ wch:40 },{ wch:16 },{ wch:32 },{ wch:12 },
-    ...MATERIAS.map(() => ({ wch:10 }))];
+  ws['!cols'] = [{wch:4},{wch:40},{wch:16},{wch:32},{wch:12},...MATERIAS.map(()=>({wch:10}))];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Filtrado');
-  const fname = `filtro_${filterName}_${listadoConfig.semestre}_${listadoConfig.paralelo}`
-    .replace(/\s+/g,'_').slice(0, 80) + '.xlsx';
+  const fname = `filtro_${filterName}_${listadoConfig.paralelo}`.replace(/\s+/g,'_').slice(0,80)+'.xlsx';
   XLSX.writeFile(wb, fname);
   auditEntry('⬇', `Exportó filtro: ${filterName} (${sts.length} estudiantes)`);
   showToast(`Exportados ${sts.length} estudiantes ✓`);
 }
 
-// Compatibilidad con código que usa setFilter (paralelos, etc.)
+// Compatibilidad legacy
 function setFilter(f, btn) {
   clearAllFilters();
   if (f !== 'todos') toggleFilter(f, document.querySelector(`.filter-btn[data-filter="${f}"]`) || btn);
