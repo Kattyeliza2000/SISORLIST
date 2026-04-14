@@ -154,7 +154,7 @@ let paralelos = [];        // [{ id, nombre, semestre, active }]
 let activeParaleloId = 'c2';
 let studentsByParalelo = {}; // { paraleloId: [...] }
 let listadoConfig = { semestre: '8vo Semestre', paralelo: 'C2' };
-let currentFilter = 'todos';
+let activeFilters  = new Set(); // multi-select combinable (AND)
 let currentMateriaFilter = 'todos';
 let selectedIds = new Set();
 let auditLog = [];
@@ -512,9 +512,12 @@ function applyRoleUI() {
   const btnImport  = document.querySelector('.btn-icon-toolbar[onclick*="openImport"]');
   const btnAdd     = document.querySelector('.btn-primary[onclick*="openAddStudent"]');
   const btnBulk    = document.getElementById('btnBulkDelete');
+  const btnFltExp  = document.getElementById('btnFilterExport');
   if (btnImport) btnImport.style.display = viewer ? 'none' : '';
   if (btnAdd)    btnAdd.style.display    = viewer ? 'none' : '';
   if (btnBulk)   btnBulk.style.display  = viewer ? 'none' : '';
+  // btnFilterExport: se oculta para viewer siempre; para otros lo controla updateFilterSummary
+  if (btnFltExp && viewer) btnFltExp.style.display = 'none';
 
   // Columna checkbox — solo admin/editor
   const checkAllTh = document.querySelector('th.col-check');
@@ -535,6 +538,7 @@ function applyRoleUI() {
 
 function renderAll() {
   applyRoleUI();
+  buildFilterMateriasBtns();
   renderTable();
   renderStats();
   renderMateria();
@@ -542,6 +546,7 @@ function renderAll() {
   renderAudit();
   renderParaleloTabs();
   rebuildImportMateriaSelect();
+  updateFilterSummary();
 }
 
 function rebuildImportMateriaSelect() {
@@ -550,6 +555,7 @@ function rebuildImportMateriaSelect() {
   sel.innerHTML = MATERIAS.map(k =>
     `<option value="${k}">${MATERIAS_MAP[k]}</option>`
   ).join('');
+  buildFilterMateriasBtns();
 }
 
 function renderStats() {
@@ -576,21 +582,40 @@ function getFiltered() {
   const sts = studentsByParalelo[activeParaleloId] || [];
   const q   = (document.getElementById('searchInput') || {}).value || '';
   const ql  = q.toLowerCase();
+
   return sts.filter(s => {
+    // Búsqueda de texto
     const matchQ = !q ||
       s.nombre.toLowerCase().includes(ql) ||
       s.celular.includes(ql) ||
       s.correo.toLowerCase().includes(ql);
+
+    if (!matchQ) return false;
+    if (!activeFilters.size) return true; // sin filtros = todos
+
     const sem = semaforo(s);
-    const matchF = currentFilter === 'todos' ||
-      (currentFilter === 'verde'    && sem === 'verde')    ||
-      (currentFilter === 'amarillo' && sem === 'amarillo') ||
-      (currentFilter === 'rojo'     && sem === 'rojo')     ||
-      (currentFilter === 'contel'   && s.celular)          ||
-      (currentFilter === 'sintel'   && !s.celular)         ||
-      (currentFilter === 'conmail'  && s.correo)           ||
-      (currentFilter === 'sinmail'  && !s.correo);
-    return matchQ && matchF;
+
+    // Cada filtro activo debe cumplirse (AND)
+    for (const f of activeFilters) {
+      if (f === 'verde'    && sem !== 'verde')    return false;
+      if (f === 'amarillo' && sem !== 'amarillo') return false;
+      if (f === 'rojo'     && sem !== 'rojo')     return false;
+      if (f === 'contel'   && !s.celular)         return false;
+      if (f === 'sintel'   && s.celular)          return false;
+      if (f === 'conmail'  && !s.correo)          return false;
+      if (f === 'sinmail'  && s.correo)           return false;
+      // filtros de materia: prefijo "mat_"
+      if (f.startsWith('mat_')) {
+        const key = f.slice(4);
+        if (!s.materias[key]) return false;
+      }
+      // filtros "sin materia": prefijo "nomat_"
+      if (f.startsWith('nomat_')) {
+        const key = f.slice(6);
+        if (s.materias[key]) return false;
+      }
+    }
+    return true;
   });
 }
 
@@ -759,14 +784,132 @@ function saveRename() {
 }
 
 // ═══════════════════════════════════════════════════
-//  FILTROS Y TABS
+//  FILTROS COMBINABLES (multi-select AND)
 // ═══════════════════════════════════════════════════
-function setFilter(f, btn) {
-  currentFilter = f;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function toggleFilter(f, btn) {
+  // Conflictos: no puede estar con/sin a la vez
+  const conflicts = {
+    contel: 'sintel', sintel: 'contel',
+    conmail: 'sinmail', sinmail: 'conmail',
+    verde: ['amarillo','rojo'], amarillo: ['verde','rojo'], rojo: ['verde','amarillo']
+  };
+  const conflict = conflicts[f];
+  if (conflict) {
+    const toRemove = Array.isArray(conflict) ? conflict : [conflict];
+    toRemove.forEach(c => {
+      activeFilters.delete(c);
+      const cb = document.querySelector(`.filter-btn[data-filter="${c}"]`);
+      if (cb) cb.classList.remove('active');
+    });
+  }
+  if (activeFilters.has(f)) {
+    activeFilters.delete(f);
+    btn.classList.remove('active');
+  } else {
+    activeFilters.add(f);
+    btn.classList.add('active');
+  }
+  selectedIds.clear();
+  updateFilterSummary();
+  renderTable();
+}
+
+function clearAllFilters() {
+  activeFilters.clear();
+  document.querySelectorAll('.filter-btn[data-filter]').forEach(b => b.classList.remove('active'));
+  updateFilterSummary();
   selectedIds.clear();
   renderTable();
+}
+
+function updateFilterSummary() {
+  const summary = document.getElementById('filterSummary');
+  const text    = document.getElementById('filterSummaryText');
+  const btnExp  = document.getElementById('btnFilterExport');
+  if (!summary) return;
+
+  if (!activeFilters.size) {
+    summary.style.display = 'none';
+    if (btnExp) btnExp.style.display = 'none';
+    return;
+  }
+
+  const labels = {
+    verde:'🟢 Completos', amarillo:'🟡 Parciales', rojo:'🔴 Sin materias',
+    contel:'Con número', sintel:'Sin número',
+    conmail:'Con correo', sinmail:'Sin correo'
+  };
+
+  const parts = [...activeFilters].map(f => {
+    if (f.startsWith('mat_'))   return `Con ${MATERIAS_MAP[f.slice(4)]  || f.slice(4)}`;
+    if (f.startsWith('nomat_')) return `Sin ${MATERIAS_MAP[f.slice(6)]  || f.slice(6)}`;
+    return labels[f] || f;
+  });
+
+  const count = getFiltered().length;
+  text.textContent = `${parts.join(' + ')} → ${count} estudiante${count !== 1 ? 's' : ''}`;
+  summary.style.display = 'flex';
+  if (btnExp && !isViewer()) btnExp.style.display = '';
+}
+
+function buildFilterMateriasBtns() {
+  const cont = document.getElementById('filterMateriasBtns');
+  if (!cont) return;
+  cont.innerHTML = MATERIAS.map(k => {
+    const chipClass = CHIP_CLASSES[k] || 'chip-ia';
+    return `
+      <button class="filter-btn filter-mat-btn" data-filter="mat_${k}"
+        title="Tiene ${MATERIAS_MAP[k]}"
+        onclick="toggleFilter('mat_${k}',this)">
+        <span class="chip chip-xs ${chipClass}">${k.toUpperCase()}</span> Inscritos
+      </button>
+      <button class="filter-btn filter-mat-btn filter-nomat" data-filter="nomat_${k}"
+        title="No tiene ${MATERIAS_MAP[k]}"
+        onclick="toggleFilter('nomat_${k}',this)">
+        <span class="chip chip-xs ${chipClass}">${k.toUpperCase()}</span> No inscritos
+      </button>`;
+  }).join('');
+}
+
+function exportFiltered() {
+  if (isViewer()) return;
+  const sts = getFiltered();
+  if (!sts.length) { showToast('No hay estudiantes con ese filtro'); return; }
+
+  const labels = {
+    verde:'Completos', amarillo:'Parciales', rojo:'Sin materias',
+    contel:'Con número', sintel:'Sin número',
+    conmail:'Con correo', sinmail:'Sin correo'
+  };
+  const filterName = [...activeFilters].map(f => {
+    if (f.startsWith('mat_'))   return `Con_${f.slice(4)}`;
+    if (f.startsWith('nomat_')) return `Sin_${f.slice(6)}`;
+    return labels[f] || f;
+  }).join('_') || 'todos';
+
+  const header = ['#','Apellidos y Nombres','Celular','Correo','Estado',
+    ...MATERIAS.map(m => MATERIAS_MAP[m])];
+  const rows = sts.map((s, i) => [
+    i+1, s.nombre, s.celular||'', s.correo||'', semaforo(s),
+    ...MATERIAS.map(m => s.materias[m] ? 'X' : '')
+  ]);
+
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  ws['!cols'] = [{ wch:4 },{ wch:40 },{ wch:16 },{ wch:32 },{ wch:12 },
+    ...MATERIAS.map(() => ({ wch:10 }))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Filtrado');
+  const fname = `filtro_${filterName}_${listadoConfig.semestre}_${listadoConfig.paralelo}`
+    .replace(/\s+/g,'_').slice(0, 80) + '.xlsx';
+  XLSX.writeFile(wb, fname);
+  auditEntry('⬇', `Exportó filtro: ${filterName} (${sts.length} estudiantes)`);
+  showToast(`Exportados ${sts.length} estudiantes ✓`);
+}
+
+// Compatibilidad con código que usa setFilter (paralelos, etc.)
+function setFilter(f, btn) {
+  clearAllFilters();
+  if (f !== 'todos') toggleFilter(f, document.querySelector(`.filter-btn[data-filter="${f}"]`) || btn);
 }
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
