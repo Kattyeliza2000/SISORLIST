@@ -166,8 +166,8 @@ header {
 
 /* ═══════════ TOOLBAR ═══════════ */
 .toolbar {
-  padding: 0.75rem 2rem; display: flex; gap: 0.5rem; align-items: center;
-  flex-wrap: wrap; background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: 0.6rem 2rem 0;
+  background: var(--bg); border-bottom: 1px solid var(--border);
   position: sticky; top: 0; z-index: 100;
 }
 .search-box { flex: 1; min-width: 200px; position: relative; }
@@ -191,17 +191,94 @@ header {
 .paralelo-tab-btn:hover { border-color: var(--accent); color: var(--accent); }
 .paralelo-tab-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
 
-/* ═══════════ BUTTONS ═══════════ */
-.filter-btn {
-  padding: 5px 11px; border: 1px solid var(--border2); border-radius: 6px;
-  background: var(--surface); font-family: 'IBM Plex Sans', sans-serif;
-  font-size: 11px; cursor: pointer; color: var(--text2); transition: all 0.15s; white-space: nowrap;
+/* ── Fila 1: búsqueda + paralelos + acciones ── */
+.toolbar-top {
+  display: flex; gap: 0.5rem; align-items: center;
+  flex-wrap: wrap; padding-bottom: 0.5rem;
 }
-.filter-btn:hover { border-color: var(--accent); color: var(--accent); }
-.filter-btn.active { background: var(--text); color: #f5f3ee; border-color: var(--text); }
-.semaforo-verde-btn { font-size: 14px; padding: 3px 7px; }
-.semaforo-amarillo-btn { font-size: 14px; padding: 3px 7px; }
-.semaforo-rojo-btn { font-size: 14px; padding: 3px 7px; }
+.toolbar-actions { display: flex; gap: 0.4rem; align-items: center; margin-left: auto; flex-wrap: wrap; }
+
+/* ── Barra de filtros ── */
+.filter-bar {
+  display: flex; gap: 0.5rem; align-items: flex-start;
+  flex-wrap: wrap; padding: 0.45rem 0 0.55rem;
+  border-top: 1px solid var(--border);
+}
+.filter-group {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.filter-group-label {
+  font-size: 9.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--text3);
+  padding-left: 2px;
+}
+.filter-group-btns { display: flex; gap: 3px; flex-wrap: wrap; }
+
+/* Separador vertical entre grupos */
+.filter-group + .filter-group {
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--border);
+  margin-left: 0.1rem;
+}
+
+/* ── Botones de filtro ── */
+.filter-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 9px; border: 1px solid var(--border2); border-radius: 5px;
+  background: var(--surface); font-family: 'IBM Plex Sans', sans-serif;
+  font-size: 11px; cursor: pointer; color: var(--text2);
+  transition: all 0.13s; white-space: nowrap; user-select: none;
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.filter-btn.active {
+  background: var(--text); color: #f5f3ee; border-color: var(--text);
+  font-weight: 500;
+}
+.filter-btn.active:hover { background: #2e2c28; }
+
+/* Chips xs dentro de los botones de materia */
+.chip.chip-xs {
+  font-size: 9px; padding: 1px 5px; border-radius: 3px;
+  font-weight: 600; letter-spacing: 0.04em;
+}
+.filter-nomat { opacity: 0.75; }
+.filter-nomat.active { opacity: 1; background: var(--red); border-color: var(--red); }
+.filter-nomat:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
+
+/* ── Resumen del filtro activo ── */
+.filter-summary {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 5px;
+  background: var(--accent-light); border: 1px solid rgba(45,90,61,0.25);
+  font-size: 11px; color: var(--accent-text); font-weight: 500;
+  flex-wrap: wrap; align-self: center;
+}
+.filter-clear-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--accent-text); font-size: 11px; font-weight: 600;
+  padding: 0 3px; opacity: 0.7; transition: opacity 0.15s;
+}
+.filter-clear-btn:hover { opacity: 1; }
+
+/* ── Botón exportar filtro ── */
+.btn-filter-export {
+  padding: 6px 12px; background: var(--accent-light); color: var(--accent-text);
+  border: 1px solid rgba(45,90,61,0.35); border-radius: 6px; font-size: 11.5px;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+  font-family: 'IBM Plex Sans', sans-serif; font-weight: 500;
+}
+.btn-filter-export:hover { background: rgba(45,90,61,0.18); border-color: var(--accent); }
+
+/* ── Search + acciones en primera fila ── */
+.toolbar > .search-box,
+.toolbar > .paralelo-tabs,
+.toolbar > .toolbar-actions { margin-bottom: 0.5rem; }
+.toolbar { display: block; padding: 0.6rem 2rem 0; }
+.toolbar-top {
+  display: flex; gap: 0.5rem; align-items: center;
+  flex-wrap: wrap; padding-bottom: 0.5rem;
+}
+.toolbar-actions { display: flex; gap: 0.4rem; align-items: center; margin-left: auto; flex-wrap: wrap; }
 
 .btn-primary {
   padding: 7px 14px; background: var(--accent); color: white; border: none;
